@@ -86,3 +86,12 @@ INSTRUCT = os.environ.get(
     "用特别愤怒的语气说"
 )
 SAMPLE_RATE = int(os.environ.get("REF_SAMPLE_RATE", "24000"))  # target sr for the prepped WAV
+
+# --- Realtime speech-to-speech pipeline (src/pipeline.py) ------------------
+# faster-whisper model + compute type for the STT stage.
+STT_MODEL = os.environ.get("STT_MODEL", "base.en")
+STT_COMPUTE = os.environ.get("STT_COMPUTE", "float16")  # float16|int8_float16|int8 ...
+# Silence (ms) that marks the end of an utterance before transcription fires.
+VAD_SILENCE_MS = int(os.environ.get("VAD_SILENCE_MS", "600"))
+# Mic device: None -> auto (prefer PulseAudio). Override e.g. AUDIO_INPUT_DEVICE=7
+MIC_DEVICE = os.environ.get("AUDIO_INPUT_DEVICE")

@@ -93,14 +93,7 @@ def clone_to_speaker(
     ref_text: str | None = None,
     instruct: str | None = None,
 ) -> None:
-    """Synthesize `text` in the cloned reference voice and write a WAV.
-
-    `instruct` is a natural-language style prompt steering *how* the text is
-    delivered (tone/emotion/pacing). Defaults to ``config.INSTRUCT``; pass an
-    empty string to disable.
-
-    Returns the path to the written file.
-    """
+    """Synthesize `text` in the cloned reference voice and write to speaker."""
     import soundfile as sf
 
     ref_audio = Path(ref_audio) if ref_audio else ensure_reference_wav()
