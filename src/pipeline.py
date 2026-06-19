@@ -207,12 +207,14 @@ class Speaker(threading.Thread):
         kind = "expressive clone (1.7B CustomVoice)" if self.expressive else "Qwen3-TTS"
         _emit(self.events_q, "info", text=f"loading {kind}…")
         try:
-            model = load_model(EXPRESSIVE_TTS_MODEL if self.expressive else None)
             ref_wav = str(prepare_reference(self.ref_audio) if self.ref_audio
                           else ensure_reference_wav())
-            if self.expressive:  # extract/cache the x-vector up front (may load Base once)
+            # Extract the x-vector BEFORE loading the synthesis model: the Base
+            # model loads transiently and frees, keeping the VRAM peak lower.
+            if self.expressive:
                 _emit(self.events_q, "info", text="extracting speaker embedding…")
                 get_speaker_embedding(ref_wav)
+            load_model(EXPRESSIVE_TTS_MODEL if self.expressive else None)
         except Exception as exc:
             _emit(self.events_q, "error", text=f"TTS load failed: {exc}")
             return

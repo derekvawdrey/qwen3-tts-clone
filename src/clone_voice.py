@@ -6,7 +6,6 @@ Usage (CLI):
 from __future__ import annotations
 
 import sys
-from functools import lru_cache
 from pathlib import Path
 
 from src.helpers import StreamPlayer
@@ -60,38 +59,60 @@ def prepare_reference(audio_path: str | Path) -> Path:
     return dst
 
 
-@lru_cache(maxsize=1)
-def load_model(model_id: str | None = None):
-    """Load a Qwen3-TTS model (cached; defaults to ``config.MODEL_ID``).
+_MODEL_CACHE: dict = {"id": None, "model": None}
 
-    Uses the CUDA-graph-accelerated `faster-qwen3-tts` runtime, a drop-in
-    reimplementation of the official package (~5x faster inference). maxsize=1
-    keeps only the active checkpoint resident; switching model_id reloads.
+
+def load_model(model_id: str | None = None):
+    """Load a Qwen3-TTS model, keeping one resident (defaults to config.MODEL_ID).
+
+    Uses the CUDA-graph-accelerated `faster-qwen3-tts` runtime. Switching
+    model_id **frees the previous checkpoint first** (so two never sit in VRAM
+    at once), then loads the new one.
     """
+    model_id = model_id or config.MODEL_ID
+    if _MODEL_CACHE["model"] is not None and _MODEL_CACHE["id"] == model_id:
+        return _MODEL_CACHE["model"]
+
+    unload_models()  # release the previous checkpoint before loading another
     from faster_qwen3_tts import FasterQwen3TTS
 
     model = FasterQwen3TTS.from_pretrained(
-        model_id or config.MODEL_ID,
-        device=config.DEVICE,
-        dtype=_torch_dtype(),
+        model_id, device=config.DEVICE, dtype=_torch_dtype(),
         attn_implementation=config.ATTN_IMPL,
     )
+    _MODEL_CACHE.update(id=model_id, model=model)
     return model
 
 
-@lru_cache(maxsize=8)
+def unload_models():
+    """Drop the cached TTS model and release its GPU memory."""
+    import gc
+
+    _MODEL_CACHE["id"] = None
+    _MODEL_CACHE["model"] = None
+    gc.collect()
+    try:
+        import torch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except Exception:
+        pass
+
+
 def get_speaker_embedding(ref_wav: str):
     """Return the speaker x-vector for a prepared reference WAV.
 
-    Cached on disk (outputs/refs/<stem>.spk.pt) and in memory. Extracted with
-    the 1.7B Base model's speaker encoder — loaded transiently and freed, so it
-    only costs VRAM the first time a voice is seen (before the .pt cache exists).
+    Cached on disk (<ref_wav>.spk.pt). Extracted with the 1.7B Base model's
+    speaker encoder — loaded transiently and freed, so it only costs VRAM the
+    first time a voice is seen (before the .pt cache exists). The cache is
+    invalidated if the source WAV is newer (e.g. a clip was replaced).
     """
     import torch
     from faster_qwen3_tts import FasterQwen3TTS
 
-    pt_path = Path(ref_wav).with_suffix(".spk.pt")
-    if pt_path.exists():
+    ref_path = Path(ref_wav)
+    pt_path = ref_path.with_suffix(".spk.pt")
+    if pt_path.exists() and pt_path.stat().st_mtime >= ref_path.stat().st_mtime:
         return torch.load(pt_path, map_location="cpu")
 
     base = FasterQwen3TTS.from_pretrained(

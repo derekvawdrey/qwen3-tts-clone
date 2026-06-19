@@ -19,7 +19,7 @@ from tkinter import filedialog, ttk
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import config  # noqa: E402
-from src.clone_voice import load_model  # noqa: E402
+from src.clone_voice import unload_models  # noqa: E402
 from src.pipeline import Pipeline, _parse_cuda  # noqa: E402
 from src.virtual_mic import VirtualMic  # noqa: E402
 
@@ -362,10 +362,15 @@ class App:
                                  device=device, device_index=index, compute_type=compute)
             segments, _ = model.transcribe(str(path), language="en", beam_size=1)
             text = " ".join(s.text.strip() for s in segments).strip()
-            self.root.after(0, lambda: (self._set_ref_text(text),
-                                        self._log("transcription done", "dim")))
+            # Hand the result back to the UI thread via the event queue — Tk
+            # widget calls (and root.after) are unreliable from worker threads.
+            if text:
+                self.events_q.put({"type": "_ref_text", "text": text})
+                self.events_q.put({"type": "info", "text": "transcription done"})
+            else:
+                self.events_q.put({"type": "info", "text": "transcription: no speech detected"})
         except Exception as exc:
-            self.root.after(0, lambda: self._log(f"transcribe failed: {exc}", "err"))
+            self.events_q.put({"type": "error", "text": f"transcribe failed: {exc}"})
 
     # ---- control ---------------------------------------------------------
     @staticmethod
@@ -465,9 +470,9 @@ class App:
 
     def _launch(self, cfg: dict):
         """Create + start a fresh pipeline from a config snapshot (UI thread)."""
-        if cfg["tts_model"] and cfg["tts_model"] != config.MODEL_ID:
+        if cfg["tts_model"]:
+            # load_model frees the old checkpoint automatically when the id changes
             config.MODEL_ID = cfg["tts_model"]
-            load_model.cache_clear()
         config.STT_MODEL = cfg["stt_model"] or config.STT_MODEL
         try:
             config.VAD_SILENCE_MS = int(cfg["vad"])
@@ -509,6 +514,7 @@ class App:
 
         def worker():
             self._teardown()
+            unload_models()  # Stop fully releases the TTS model's GPU memory
             self.events_q.put({"type": "status", "value": "stopped"})
 
         threading.Thread(target=worker, daemon=True).start()
@@ -529,6 +535,8 @@ class App:
                 kind = ev["type"]
                 if kind == "_relaunch":
                     self._launch(ev["cfg"])
+                elif kind == "_ref_text":
+                    self._set_ref_text(ev["text"])
                 elif kind == "status":
                     self.status_var.set(ev["value"])
                     self.status_dot.configure(foreground={
@@ -607,6 +615,7 @@ class App:
         try:
             self._save_settings()
             self._teardown()
+            unload_models()  # release the TTS model's GPU memory on exit
         finally:
             self.root.destroy()
 
