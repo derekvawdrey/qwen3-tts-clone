@@ -284,8 +284,17 @@ class App(QMainWindow):
         self.stop_btn.setObjectName("Danger")
         self.stop_btn.setEnabled(False)
         self.stop_btn.clicked.connect(self._stop)
+        # Live toggle: route the real mic ("my voice") vs the cloned voice to the
+        # output. Checkable; flips instantly while the pipeline is running.
+        self.voice_toggle = QPushButton("🎙  Output: Cloned voice")
+        self.voice_toggle.setObjectName("Ghost")
+        self.voice_toggle.setCheckable(True)
+        self.voice_toggle.setToolTip(
+            "Toggle between your real microphone and the cloned voice (live)")
+        self.voice_toggle.toggled.connect(self._on_voice_toggle)
         ctrl.addWidget(self.apply_btn)
         ctrl.addWidget(self.stop_btn)
+        ctrl.addWidget(self.voice_toggle)
         ctrl.addStretch(1)
         root.addLayout(ctrl)
 
@@ -547,6 +556,13 @@ class App(QMainWindow):
         if self.pipeline and self.pipeline.running:
             self.pipeline.set_language(self.lang_combo.currentText())
 
+    def _on_voice_toggle(self, on: bool):
+        self.voice_toggle.setText(
+            "🎤  Output: My voice (passthrough)" if on else "🎙  Output: Cloned voice")
+        if self.pipeline and self.pipeline.running:
+            self.pipeline.set_passthrough(on)
+        # If not running yet, the state is read into cfg at launch.
+
     def _send_text(self):
         text = self.msg_entry.text().strip()
         if not text:
@@ -578,6 +594,7 @@ class App(QMainWindow):
             icl=self.icl_chk.isChecked(),
             vmic=self.vmic_chk.isChecked(),
             duplex=self.duplex_chk.isChecked(),
+            passthrough=self.voice_toggle.isChecked(),
         )
 
     def _apply(self):
@@ -638,7 +655,8 @@ class App(QMainWindow):
             cfg["input_device"], output_device, cfg["instruct"], self.events_q,
             half_duplex=cfg["duplex"], ref_audio=cfg["voice_path"],
             ref_text=cfg["ref_text"] or None, language=cfg["language"] or None,
-            expressive=cfg["expressive"], icl=cfg["icl"])
+            expressive=cfg["expressive"], icl=cfg["icl"],
+            passthrough=cfg["passthrough"])
         self.pipeline.start()
         self.apply_btn.setEnabled(True)
         self.stop_btn.setEnabled(True)

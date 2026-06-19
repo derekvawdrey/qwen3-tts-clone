@@ -70,12 +70,15 @@ def _resolve_input_device(sd, device):
 class MicSource(threading.Thread):
     """Capture 16 kHz mono frames and push them onto audio_q (drops on overflow)."""
 
-    def __init__(self, audio_q, stop_evt, device=None, events_q=None):
+    def __init__(self, audio_q, stop_evt, device=None, events_q=None,
+                 passthrough_q=None, passthrough_evt=None):
         super().__init__(name="MicSource", daemon=True)
         self.audio_q = audio_q
         self.stop_evt = stop_evt
         self.device = device
         self.events_q = events_q
+        self.passthrough_q = passthrough_q      # raw frames for "my voice" mode
+        self.passthrough_evt = passthrough_evt  # set => also fan out to passthrough
 
     def run(self):
         import sounddevice as sd
@@ -83,10 +86,17 @@ class MicSource(threading.Thread):
         device = _resolve_input_device(sd, self.device)
 
         def callback(indata, frames, time_info, status):  # runs in PortAudio thread
+            frame = indata[:, 0].copy()
             try:
-                self.audio_q.put_nowait(indata[:, 0].copy())
+                self.audio_q.put_nowait(frame)
             except queue.Full:
                 pass  # consumer is behind (e.g. loading models) — drop, don't block
+            # "My voice" passthrough: fan the same frame out to the player thread.
+            if self.passthrough_evt is not None and self.passthrough_evt.is_set():
+                try:
+                    self.passthrough_q.put_nowait(frame)
+                except queue.Full:
+                    pass
 
         try:
             with sd.InputStream(
@@ -103,7 +113,7 @@ class Transcriber(threading.Thread):
     """VAD-segment the mic stream and transcribe each utterance to text_q."""
 
     def __init__(self, audio_q, text_q, speaking_evt, stop_evt, events_q=None,
-                 half_duplex=True):
+                 half_duplex=True, passthrough_evt=None):
         super().__init__(name="Transcriber", daemon=True)
         self.audio_q = audio_q
         self.text_q = text_q
@@ -111,6 +121,7 @@ class Transcriber(threading.Thread):
         self.stop_evt = stop_evt
         self.events_q = events_q
         self.half_duplex = half_duplex
+        self.passthrough_evt = passthrough_evt  # set => skip STT (user's own voice)
 
     def run(self):
         import torch
@@ -145,11 +156,14 @@ class Transcriber(threading.Thread):
             except queue.Empty:
                 continue
 
-            # Half-duplex: ignore the mic (and reset VAD) while the bot speaks,
-            # to avoid transcribing TTS that leaks back in through the speakers.
-            # Skipped when full-duplex (virtual mic / headphones) so you can
-            # barge in while the cloned voice is still talking.
-            if self.half_duplex and self.speaking_evt.is_set():
+            # Skip transcription (and reset VAD) when:
+            #  - half-duplex and the bot is speaking — avoids transcribing TTS that
+            #    leaks back through the speakers (skipped in full-duplex for barge-in);
+            #  - passthrough is on — "my voice" mode speaks the raw mic, so the clone
+            #    must stay silent rather than echo the user in the cloned voice.
+            muted = (self.half_duplex and self.speaking_evt.is_set()) or \
+                    (self.passthrough_evt is not None and self.passthrough_evt.is_set())
+            if muted:
                 if collecting or preroll:
                     vad.reset_states()
                     collecting, buf = False, []
@@ -263,6 +277,60 @@ class Speaker(threading.Thread):
             pass
 
 
+class Passthrough(threading.Thread):
+    """"My voice" mode: play raw mic frames straight to the output device.
+
+    Routes the user's real microphone to the output (typically the virtual-mic
+    sink) unmodified, bypassing STT + clone. Toggling `passthrough_evt` flips it
+    live: the output stream is opened on enable and closed on disable so the
+    device is released while in cloned-voice mode.
+    """
+
+    def __init__(self, passthrough_q, passthrough_evt, stop_evt,
+                 output_device=None, events_q=None):
+        super().__init__(name="Passthrough", daemon=True)
+        self.passthrough_q = passthrough_q
+        self.passthrough_evt = passthrough_evt
+        self.stop_evt = stop_evt
+        self.output_device = output_device
+        self.events_q = events_q
+
+    def run(self):
+        player = None
+        while not self.stop_evt.is_set():
+            active = self.passthrough_evt.is_set()
+            if active and player is None:
+                try:
+                    player = StreamPlayer(device=self.output_device)
+                except Exception as exc:  # noqa: BLE001
+                    _emit(self.events_q, "error", text=f"passthrough failed: {exc}")
+                    self.passthrough_evt.clear()
+                    continue
+            elif not active and player is not None:
+                player.close(wait=False)
+                player = None
+                self._drain()  # discard frames captured during the switch
+
+            try:
+                frame = self.passthrough_q.get(timeout=0.1)
+            except queue.Empty:
+                continue
+            if player is not None and self.passthrough_evt.is_set():
+                try:
+                    player(frame, MIC_RATE)
+                except Exception as exc:  # noqa: BLE001
+                    _emit(self.events_q, "error", text=f"passthrough failed: {exc}")
+        if player is not None:
+            player.close(wait=False)
+
+    def _drain(self):
+        try:
+            while True:
+                self.passthrough_q.get_nowait()
+        except queue.Empty:
+            pass
+
+
 def _parse_cuda(device: str):
     """'cuda:0' -> ('cuda', 0); 'cpu' -> ('cpu', 0)."""
     if ":" in device:
@@ -276,7 +344,7 @@ class Pipeline:
 
     def __init__(self, input_device=None, output_device=None, instruct=None,
                  events_q=None, half_duplex=True, ref_audio=None, ref_text=None,
-                 language=None, expressive=False, icl=False):
+                 language=None, expressive=False, icl=False, passthrough=False):
         self.input_device = input_device
         self.output_device = output_device
         self.instruct = instruct
@@ -289,6 +357,10 @@ class Pipeline:
         self.icl = icl
         self.audio_q = queue.Queue(maxsize=200)   # ~6 s @ 32 ms frames
         self.text_q = queue.Queue(maxsize=4)
+        self.passthrough_q = queue.Queue(maxsize=200)  # raw mic frames for "my voice"
+        self.passthrough_evt = threading.Event()
+        if passthrough:
+            self.passthrough_evt.set()
         self.speaking = threading.Event()
         self.stop_evt = threading.Event()
         self._threads: list[threading.Thread] = []
@@ -321,6 +393,15 @@ class Pipeline:
         if self._speaker is not None:
             self._speaker.language = value or config.LANGUAGE
 
+    def set_passthrough(self, on: bool):
+        """Live-toggle 'my voice' mode: raw mic -> output, clone muted (or back)."""
+        if on:
+            self.passthrough_evt.set()
+        else:
+            self.passthrough_evt.clear()
+        _emit(self.events_q, "info",
+              text="output: your own voice (passthrough)" if on else "output: cloned voice")
+
     def start(self):
         if self._threads:
             return
@@ -330,10 +411,14 @@ class Pipeline:
                           self.half_duplex, self.ref_audio, self.ref_text,
                           self.language, self.expressive, self.icl)
         transcriber = Transcriber(self.audio_q, self.text_q, self.speaking,
-                                  self.stop_evt, self.events_q, self.half_duplex)
-        mic = MicSource(self.audio_q, self.stop_evt, self.input_device, self.events_q)
+                                  self.stop_evt, self.events_q, self.half_duplex,
+                                  self.passthrough_evt)
+        mic = MicSource(self.audio_q, self.stop_evt, self.input_device, self.events_q,
+                        self.passthrough_q, self.passthrough_evt)
+        passthrough = Passthrough(self.passthrough_q, self.passthrough_evt,
+                                  self.stop_evt, self.output_device, self.events_q)
         self._speaker = speaker
-        self._threads = [speaker, transcriber, mic]
+        self._threads = [speaker, transcriber, mic, passthrough]
         # Load-heavy stages first so the mic isn't filling a full queue for long.
         for t in self._threads:
             t.start()
