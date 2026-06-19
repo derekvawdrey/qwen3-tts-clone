@@ -8,3 +8,5 @@ assets/trump_trade_deficit.wav
 assets/ref_text.txt
 # model cache (if HF_HOME points here)
 .cache/
+# GUI settings persisted at runtime
+.gui_settings.json
