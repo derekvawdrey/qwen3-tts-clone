@@ -1,0 +1,55 @@
+[project]
+name = "qwen3-tts-clone"
+version = "0.1.0"
+description = "Zero-shot voice cloning demo built on Qwen3-TTS"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    # Official Qwen3-TTS package (https://github.com/QwenLM/Qwen3-TTS)
+    "qwen-tts>=0.1.1",
+    # Pinned to 2.8.0+cu128: the last torch with a *prebuilt* FlashAttention 2
+    # wheel (see [flash] below). Newer torch (2.12/cu130) has no flash-attn
+    # wheel and forces a ~30 min source build. Installed from the cu128 index.
+    "torch==2.8.0",
+    # Must track torch exactly (qwen-tts pulls it in) — a mismatched torchaudio
+    # fails at import with `undefined symbol: torch_library_impl`.
+    "torchaudio==2.8.0",
+    # soundfile bundles libsndfile >= 1.1 -> decodes the reference MP3, no ffmpeg
+    "soundfile>=0.12.1",
+    "librosa>=0.10.1",
+    "numpy>=1.24",
+    "faster-qwen3-tts>=0.2.6",
+]
+
+[project.optional-dependencies]
+# Optional: auto-transcribe the reference clip to fill ref_text (make transcribe)
+transcribe = ["faster-whisper>=1.0"]
+# Optional: FlashAttention 2 for faster / lower-memory inference. Uses the
+# official *prebuilt* wheel matching torch 2.8 / CUDA 12 / cp312 / cxx11abi=TRUE
+# — no compilation. Install with: make flash-attn  (or: uv sync --extra flash)
+flash = [
+    "flash-attn @ https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.3/flash_attn-2.8.3+cu12torch2.8cxx11abiTRUE-cp312-cp312-linux_x86_64.whl",
+]
+
+[dependency-groups]
+dev = ["pytest>=8.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+markers = ["slow: heavy GPU test that downloads the model (opt in with --run-clone)"]
+
+# Treat src/ and scripts/ as importable packages without packaging the project.
+[tool.uv]
+package = false
+
+# Pull torch from the CUDA 12.8 build index (PyPI's default is the cu130 build,
+# which has no prebuilt flash-attn wheel).
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu128" }
+torchaudio = { index = "pytorch-cu128" }

@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+outputs/
+# generated from the source MP3
+assets/trump_trade_deficit.wav
+assets/ref_text.txt
+# model cache (if HF_HOME points here)
+.cache/
