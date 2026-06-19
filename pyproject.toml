@@ -35,6 +35,14 @@ realtime = [
     "silero-vad>=5.1",
     "sounddevice>=0.5",
 ]
+# Everything the PySide6 desktop GUI needs (the modern control panel in
+# src/gui.py). Includes the realtime stack because the GUI drives that pipeline.
+gui = [
+    "PySide6>=6.6",
+    "faster-whisper>=1.0",
+    "silero-vad>=5.1",
+    "sounddevice>=0.5",
+]
 
 [dependency-groups]
 dev = ["pytest>=8.0"]

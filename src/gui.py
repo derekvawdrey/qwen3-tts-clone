@@ -1,29 +1,41 @@
-"""Tkinter control panel for the realtime voice-clone pipeline.
+"""Modern PySide6 control panel for the realtime voice-clone pipeline.
 
-Pick a microphone, output, and voice sample; tweak generation/STT settings;
-optionally expose the cloned voice as a virtual microphone; then Start/Stop and
-watch the live transcript. Settings persist to .gui_settings.json.
+Pick a microphone, output, and voice; tweak generation/STT settings; optionally
+expose the cloned voice as a virtual microphone; then Apply and watch the live
+transcript. Type a message to speak it in the cloned voice. Settings persist to
+.gui_settings.json.
 
     python -m src.gui
+
+(The legacy Tkinter version lives in src/gui_tk.py.)
 """
 from __future__ import annotations
 
+import html
 import json
 import os
 import queue
 import sys
 import threading
-import tkinter as tk
 from pathlib import Path
-from tkinter import filedialog, ttk
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from PySide6.QtCore import Qt, QTimer  # noqa: E402
+from PySide6.QtGui import QFont  # noqa: E402
+from PySide6.QtWidgets import (  # noqa: E402
+    QApplication, QCheckBox, QComboBox, QFileDialog, QFrame, QGridLayout,
+    QHBoxLayout, QLabel, QLineEdit, QMainWindow, QPlainTextEdit, QPushButton,
+    QScrollArea, QSizePolicy, QSpinBox, QTextEdit, QVBoxLayout, QWidget,
+)
+
 import config  # noqa: E402
 from src.clone_voice import unload_models  # noqa: E402
+from src.personalities import load_personalities  # noqa: E402
 from src.pipeline import Pipeline, _parse_cuda  # noqa: E402
 from src.virtual_mic import VirtualMic  # noqa: E402
 
-AUTO_LABEL = "Auto (PulseAudio default)"
+AUTO_LABEL = "Auto (system default)"
 AUDIO_EXTS = {".wav", ".mp3", ".flac", ".ogg", ".m4a", ".opus"}
 SETTINGS_PATH = config.ROOT / ".gui_settings.json"
 TTS_MODELS = ["Qwen/Qwen3-TTS-12Hz-0.6B-Base", "Qwen/Qwen3-TTS-12Hz-1.7B-Base"]
@@ -31,19 +43,22 @@ STT_MODELS = ["tiny.en", "base.en", "small.en", "distil-small.en", "medium.en"]
 LANGUAGES = ["English", "Chinese", "Spanish", "French", "German", "Italian",
              "Japanese", "Korean", "Portuguese", "Russian"]
 
-# Discord-ish dark palette.
-C_BG = "#313338"        # main content
-C_BG_ALT = "#2b2d31"    # buttons / raised
-C_BG_INPUT = "#1e1f22"  # inputs / text areas
-C_BORDER = "#3f4147"
-C_FG = "#dbdee1"        # primary text
-C_FG_MUTED = "#949ba4"  # secondary text
-C_ACCENT = "#5865f2"    # blurple
-C_ACCENT_HI = "#4752c4"
-C_DANGER = "#da373c"
-C_DANGER_HI = "#a12d2f"
-C_GREEN = "#3ba55d"
-C_RED = "#f23f43"
+# --- palette ---------------------------------------------------------------
+C_BG = "#1a1b1e"         # window
+C_PANEL = "#26282c"      # cards
+C_PANEL_HI = "#2f3136"   # hovered / raised
+C_INPUT = "#1e1f22"      # inputs
+C_BORDER = "#3a3d44"
+C_FG = "#e3e5e8"         # primary text
+C_FG_MUTED = "#9aa0a8"   # secondary text
+C_ACCENT = "#5b6ef5"     # indigo
+C_ACCENT_HI = "#4a5be0"
+C_DANGER = "#e0484d"
+C_DANGER_HI = "#c23a3f"
+C_GREEN = "#43b581"
+C_AMBER = "#faa61a"
+C_BLUE = "#3aa8fc"
+C_RED = "#f0494e"
 
 # Transcripts for the bundled reference clips, so they work out of the box.
 PRESET_TEXTS = {
@@ -66,15 +81,128 @@ PRESET_TEXTS = {
         "has chickens, and they don't even have mustaches.",
 }
 
+STATUS_COLORS = {
+    "idle": C_FG_MUTED, "loading": C_AMBER, "applying": C_AMBER,
+    "listening": C_GREEN, "speaking": C_ACCENT, "stopping": C_AMBER,
+    "stopped": C_FG_MUTED,
+}
 
-class App:
-    def __init__(self, root: tk.Tk):
-        self.root = root
-        root.title("Qwen3-TTS Voice")
-        root.minsize(560, 420)
-        # Open at a height that fits the screen; content scrolls if taller.
-        h = min(880, max(480, root.winfo_screenheight() - 120))
-        root.geometry(f"640x{h}")
+
+def _qss() -> str:
+    chevron = (config.ASSETS_DIR / "ui" / "chevron-down.svg").as_posix()
+    return f"""
+    QWidget {{ background: {C_BG}; color: {C_FG}; font-size: 13px; }}
+    QScrollArea, QScrollArea > QWidget > QWidget {{ background: {C_BG}; border: 0; }}
+    /* Labels/checkboxes must be transparent so they blend with their card
+       instead of painting the window background as a dark rectangle. */
+    QLabel, QCheckBox {{ background: transparent; }}
+
+    #Header {{ font-size: 19px; font-weight: 700; color: {C_FG}; }}
+    #Subtitle {{ color: {C_FG_MUTED}; font-size: 12px; }}
+
+    QFrame#Card {{
+        background: {C_PANEL}; border: 1px solid {C_BORDER}; border-radius: 12px;
+    }}
+    QLabel#CardTitle {{
+        color: {C_FG_MUTED}; font-size: 11px; font-weight: 700;
+        text-transform: uppercase; letter-spacing: 1px;
+    }}
+    QLabel#FieldLabel {{ color: {C_FG_MUTED}; }}
+    QLabel#Hint {{ color: {C_FG_MUTED}; font-size: 11px; }}
+
+    QComboBox, QLineEdit, QSpinBox, QPlainTextEdit {{
+        background: {C_INPUT}; border: 1px solid {C_BORDER}; border-radius: 8px;
+        padding: 7px 9px; color: {C_FG}; selection-background-color: {C_ACCENT};
+    }}
+    QComboBox:hover, QLineEdit:hover, QSpinBox:hover {{ border-color: #4b4f57; }}
+    QComboBox:focus, QLineEdit:focus, QSpinBox:focus, QPlainTextEdit:focus {{
+        border-color: {C_ACCENT};
+    }}
+    QComboBox::drop-down {{ border: 0; width: 26px; }}
+    QComboBox::down-arrow {{ image: url("{chevron}"); width: 12px; height: 12px; }}
+    QComboBox QAbstractItemView {{
+        background: {C_INPUT}; border: 1px solid {C_BORDER}; border-radius: 8px;
+        selection-background-color: {C_ACCENT}; selection-color: white;
+        outline: 0; padding: 4px;
+    }}
+    QSpinBox::up-button, QSpinBox::down-button {{ width: 0; border: 0; }}
+
+    QCheckBox {{ spacing: 9px; color: {C_FG}; }}
+    QCheckBox::indicator {{
+        width: 18px; height: 18px; border-radius: 5px;
+        border: 1px solid {C_BORDER}; background: {C_INPUT};
+    }}
+    QCheckBox::indicator:hover {{ border-color: {C_ACCENT}; }}
+    QCheckBox::indicator:checked {{ background: {C_ACCENT}; border-color: {C_ACCENT}; }}
+    QCheckBox:disabled {{ color: {C_FG_MUTED}; }}
+
+    QPushButton {{
+        background: {C_PANEL_HI}; border: 1px solid {C_BORDER}; border-radius: 8px;
+        padding: 8px 14px; color: {C_FG};
+    }}
+    QPushButton:hover {{ background: #393c43; }}
+    QPushButton:disabled {{ color: {C_FG_MUTED}; background: {C_PANEL}; }}
+    QPushButton#Accent {{
+        background: {C_ACCENT}; border: 0; color: white; font-weight: 600; padding: 10px 22px;
+    }}
+    QPushButton#Accent:hover {{ background: {C_ACCENT_HI}; }}
+    QPushButton#Accent:disabled {{ background: #3a4170; color: #b9bfe8; }}
+    QPushButton#Danger {{ background: {C_PANEL_HI}; border: 1px solid {C_BORDER}; color: #f0b6b7; }}
+    QPushButton#Danger:hover {{ background: {C_DANGER_HI}; color: white; border-color: {C_DANGER_HI}; }}
+    QPushButton#Danger:disabled {{ color: {C_FG_MUTED}; }}
+    QPushButton#Ghost {{ background: transparent; border: 1px solid {C_BORDER}; }}
+    QPushButton#Ghost:hover {{ background: {C_PANEL_HI}; }}
+
+    QTextEdit#Log {{
+        background: {C_INPUT}; border: 1px solid {C_BORDER}; border-radius: 10px;
+        padding: 10px; font-family: "JetBrains Mono", "DejaVu Sans Mono", monospace;
+        font-size: 12px;
+    }}
+    QScrollBar:vertical {{ background: transparent; width: 10px; margin: 2px; }}
+    QScrollBar::handle:vertical {{ background: #43464d; border-radius: 5px; min-height: 28px; }}
+    QScrollBar::handle:vertical:hover {{ background: #54585f; }}
+    QScrollBar::add-line, QScrollBar::sub-line {{ height: 0; }}
+    QScrollBar::add-page, QScrollBar::sub-page {{ background: transparent; }}
+    """
+
+
+def _hline() -> QFrame:
+    f = QFrame()
+    f.setFrameShape(QFrame.HLine)
+    f.setStyleSheet(f"color: {C_BORDER}; background: {C_BORDER}; max-height: 1px;")
+    return f
+
+
+class Card(QFrame):
+    """A titled rounded panel holding a grid of fields."""
+
+    def __init__(self, title: str):
+        super().__init__()
+        self.setObjectName("Card")
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(16, 14, 16, 14)
+        outer.setSpacing(10)
+        lbl = QLabel(title)
+        lbl.setObjectName("CardTitle")
+        outer.addWidget(lbl)
+        self.grid = QGridLayout()
+        self.grid.setHorizontalSpacing(12)
+        self.grid.setVerticalSpacing(9)
+        self.grid.setColumnStretch(1, 1)
+        outer.addLayout(self.grid)
+
+    def label(self, row: int, text: str):
+        lab = QLabel(text)
+        lab.setObjectName("FieldLabel")
+        self.grid.addWidget(lab, row, 0, Qt.AlignLeft | Qt.AlignVCenter)
+
+
+class App(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Qwen3-TTS Voice Clone")
+        self.setMinimumSize(540, 440)
+        self.resize(720, min(960, 880))
 
         self.events_q: queue.Queue = queue.Queue()
         self.pipeline: Pipeline | None = None
@@ -82,246 +210,218 @@ class App:
         self.settings = self._load_settings()
         self.ref_texts: dict = self.settings.get("ref_texts", {})
         self._voice_paths: dict[str, str] = {}
-        # Downloadable "personality" presets (assets/personalities.json), merged
-        # into the voice picker. Reference text is keyed by clip stem.
-        from src.personalities import load_personalities
         self.personalities = load_personalities()
         self._preset_texts = dict(PRESET_TEXTS)
         for p in self.personalities:
             if p["ref_text"]:
                 self._preset_texts[Path(p["audio"]).stem] = p["ref_text"]
 
-        self._apply_theme()
-        self._build_widgets()
+        self._build_ui()
         self._refresh_devices()
         self._populate_voices()
         self._apply_settings()
-        root.after(100, self._poll_events)
-        root.protocol("WM_DELETE_WINDOW", self._on_close)
 
-    # ---- theme -----------------------------------------------------------
-    def _apply_theme(self):
-        """A dark, Discord-ish ttk theme."""
-        style = ttk.Style()
-        try:
-            style.theme_use("clam")  # most styleable built-in theme
-        except tk.TclError:
-            pass
-        self.root.configure(bg=C_BG)
-        # dropdown list popups (not ttk-styleable directly)
-        self.root.option_add("*TCombobox*Listbox.background", C_BG_INPUT)
-        self.root.option_add("*TCombobox*Listbox.foreground", C_FG)
-        self.root.option_add("*TCombobox*Listbox.selectBackground", C_ACCENT)
-        self.root.option_add("*TCombobox*Listbox.selectForeground", "#ffffff")
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self._poll_events)
+        self.timer.start(80)
 
-        font = ("Helvetica", 10)
-        style.configure(".", background=C_BG, foreground=C_FG,
-                        fieldbackground=C_BG_INPUT, bordercolor=C_BORDER,
-                        focuscolor=C_BG, font=font)
-        style.configure("TFrame", background=C_BG)
-        style.configure("TLabel", background=C_BG, foreground=C_FG)
-        style.configure("Muted.TLabel", foreground=C_FG_MUTED)
-        style.configure("TLabelframe", background=C_BG, bordercolor=C_BORDER,
-                        relief="solid")
-        style.configure("TLabelframe.Label", background=C_BG, foreground=C_FG_MUTED,
-                        font=("Helvetica", 9, "bold"))
-        style.configure("TCheckbutton", background=C_BG, foreground=C_FG,
-                        indicatorcolor=C_BG_INPUT)
-        style.map("TCheckbutton", background=[("active", C_BG)],
-                  foreground=[("disabled", C_FG_MUTED)],
-                  indicatorcolor=[("selected", C_ACCENT), ("!selected", C_BG_INPUT)])
-        style.configure("TButton", background=C_BG_ALT, foreground=C_FG,
-                        borderwidth=0, padding=(10, 6))
-        style.map("TButton", background=[("active", "#404249"),
-                                         ("disabled", C_BG_ALT)],
-                  foreground=[("disabled", C_FG_MUTED)])
-        style.configure("Accent.TButton", background=C_ACCENT, foreground="#ffffff",
-                        padding=(16, 6))
-        style.map("Accent.TButton", background=[("active", C_ACCENT_HI),
-                                                ("disabled", "#3a3f63")])
-        style.configure("Danger.TButton", background=C_BG_ALT, foreground="#f0b6b7")
-        style.map("Danger.TButton", background=[("active", C_DANGER_HI),
-                                                ("disabled", C_BG_ALT)],
-                  foreground=[("active", "#ffffff"), ("disabled", C_FG_MUTED)])
-        for widget in ("TCombobox", "TEntry", "TSpinbox"):
-            style.configure(widget, fieldbackground=C_BG_INPUT, foreground=C_FG,
-                            bordercolor=C_BORDER, arrowcolor=C_FG,
-                            insertcolor=C_FG, padding=4)
-        style.map("TCombobox", fieldbackground=[("readonly", C_BG_INPUT)],
-                  foreground=[("readonly", C_FG)],
-                  selectbackground=[("readonly", C_BG_INPUT)],
-                  selectforeground=[("readonly", C_FG)])
-        style.configure("Placeholder.TEntry", fieldbackground=C_BG_INPUT,
-                        foreground=C_FG_MUTED, padding=4)
+    # ---- UI ---------------------------------------------------------------
+    def _build_ui(self):
+        central = QWidget()
+        self.setCentralWidget(central)
+        root = QVBoxLayout(central)
+        root.setContentsMargins(18, 16, 18, 16)
+        root.setSpacing(12)
 
-    # ---- layout ----------------------------------------------------------
-    def _build_scroll_area(self):
-        """A vertically scrollable container; returns the inner frame for content."""
-        outer = ttk.Frame(self.root)
-        outer.pack(side="top", fill="both", expand=True)
-        canvas = tk.Canvas(outer, bg=C_BG, highlightthickness=0, borderwidth=0)
-        vsb = ttk.Scrollbar(outer, orient="vertical", command=canvas.yview)
-        canvas.configure(yscrollcommand=vsb.set)
-        vsb.pack(side="right", fill="y")
-        canvas.pack(side="left", fill="both", expand=True)
+        # Header row: title + status pill
+        head = QHBoxLayout()
+        title_box = QVBoxLayout()
+        title_box.setSpacing(1)
+        h = QLabel("Qwen3-TTS Voice Clone")
+        h.setObjectName("Header")
+        sub = QLabel("Realtime speech-to-speech · clone any voice")
+        sub.setObjectName("Subtitle")
+        title_box.addWidget(h)
+        title_box.addWidget(sub)
+        head.addLayout(title_box)
+        head.addStretch(1)
+        self.status_pill = QLabel("● idle")
+        self.status_pill.setStyleSheet(self._pill_style(C_FG_MUTED))
+        head.addWidget(self.status_pill, 0, Qt.AlignVCenter)
+        root.addLayout(head)
 
-        inner = ttk.Frame(canvas)
-        win = canvas.create_window((0, 0), window=inner, anchor="nw")
-        inner.bind("<Configure>",
-                   lambda _e: canvas.configure(scrollregion=canvas.bbox("all")))
-        canvas.bind("<Configure>",
-                    lambda e: canvas.itemconfigure(win, width=e.width))
+        # Scrollable settings cards
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        inner = QWidget()
+        col = QVBoxLayout(inner)
+        col.setContentsMargins(0, 0, 6, 0)
+        col.setSpacing(12)
+        self._build_devices(col)
+        self._build_voice(col)
+        self._build_generation(col)
+        self._build_stt(col)
+        self._build_routing(col)
+        col.addStretch(1)
+        scroll.setWidget(inner)
+        scroll.setFocusPolicy(Qt.NoFocus)
+        root.addWidget(scroll, 1)
 
-        def _wheel(e):
-            delta = -1 if getattr(e, "num", None) == 4 else 1 if getattr(e, "num", None) == 5 \
-                else int(-e.delta / 120) if e.delta else 0
-            canvas.yview_scroll(delta, "units")
+        # Keep long combo contents (model ids, "Name — Category") from forcing the
+        # card width: size to a short minimum and let the grid stretch handle it.
+        for cb in self.findChildren(QComboBox):
+            cb.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+            cb.setMinimumContentsLength(8)
+            cb.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
-        canvas.bind_all("<MouseWheel>", _wheel)   # Windows / macOS
-        canvas.bind_all("<Button-4>", _wheel)     # Linux scroll up
-        canvas.bind_all("<Button-5>", _wheel)     # Linux scroll down
-        return inner
+        # Controls
+        ctrl = QHBoxLayout()
+        self.apply_btn = QPushButton("Apply settings")
+        self.apply_btn.setObjectName("Accent")
+        self.apply_btn.clicked.connect(self._apply)
+        self.stop_btn = QPushButton("Stop")
+        self.stop_btn.setObjectName("Danger")
+        self.stop_btn.setEnabled(False)
+        self.stop_btn.clicked.connect(self._stop)
+        ctrl.addWidget(self.apply_btn)
+        ctrl.addWidget(self.stop_btn)
+        ctrl.addStretch(1)
+        root.addLayout(ctrl)
 
-    def _build_widgets(self):
-        pad = {"padx": 6, "pady": 3}
-        sec = self._build_scroll_area()  # settings sections go here (scrollable)
+        # Transcript / log
+        self.log = QTextEdit()
+        self.log.setObjectName("Log")
+        self.log.setReadOnly(True)
+        self.log.setMinimumHeight(70)   # flexible: shrinks on small windows
+        self.log.setMaximumHeight(220)
+        root.addWidget(self.log)
 
-        # --- Devices ---
-        dev = ttk.LabelFrame(sec, text="Devices")
-        dev.pack(fill="x", padx=8, pady=4)
-        dev.columnconfigure(1, weight=1)
-        ttk.Label(dev, text="Microphone:").grid(row=0, column=0, sticky="w", **pad)
-        self.mic_combo = ttk.Combobox(dev, state="readonly")
-        self.mic_combo.grid(row=0, column=1, sticky="ew", **pad)
-        ttk.Label(dev, text="Output:").grid(row=1, column=0, sticky="w", **pad)
-        self.out_combo = ttk.Combobox(dev, state="readonly")
-        self.out_combo.grid(row=1, column=1, sticky="ew", **pad)
-        ttk.Button(dev, text="↻ Refresh", command=self._refresh_devices) \
-            .grid(row=0, column=2, rowspan=2, sticky="ns", **pad)
+        # Message box
+        msg = QHBoxLayout()
+        self.msg_entry = QLineEdit()
+        self.msg_entry.setPlaceholderText("Type a message to speak in the cloned voice…")
+        self.msg_entry.returnPressed.connect(self._send_text)
+        send = QPushButton("Send")
+        send.setObjectName("Accent")
+        send.clicked.connect(self._send_text)
+        msg.addWidget(self.msg_entry, 1)
+        msg.addWidget(send)
+        root.addLayout(msg)
+        self.msg_entry.setFocus()  # avoid a stray focus ring on the scroll area
 
-        # --- Voice sample ---
-        voice = ttk.LabelFrame(sec, text="Voice sample")
-        voice.pack(fill="x", padx=8, pady=4)
-        voice.columnconfigure(1, weight=1)
-        ttk.Label(voice, text="Clip:").grid(row=0, column=0, sticky="w", **pad)
-        self.voice_combo = ttk.Combobox(voice, state="readonly")
-        self.voice_combo.grid(row=0, column=1, sticky="ew", **pad)
-        self.voice_combo.bind("<<ComboboxSelected>>", self._on_voice_selected)
-        ttk.Button(voice, text="Browse…", command=self._browse_voice) \
-            .grid(row=0, column=2, **pad)
-        ttk.Label(voice, text="Reference text:").grid(row=1, column=0, sticky="nw", **pad)
-        self.ref_text = tk.Text(
-            voice, height=3, wrap="word", bg=C_BG_INPUT, fg=C_FG,
-            insertbackground=C_FG, relief="flat", highlightthickness=1,
-            highlightbackground=C_BORDER, highlightcolor=C_ACCENT, padx=6, pady=4)
-        self.ref_text.grid(row=1, column=1, sticky="ew", **pad)
-        ttk.Button(voice, text="Auto-transcribe", command=self._auto_transcribe) \
-            .grid(row=1, column=2, sticky="n", **pad)
+    def _pill_style(self, color: str) -> str:
+        return (f"background: {C_PANEL}; border: 1px solid {C_BORDER}; "
+                f"border-radius: 12px; padding: 5px 12px; color: {color}; font-weight: 600;")
 
-        # --- Generation ---
-        gen = ttk.LabelFrame(sec, text="Generation")
-        gen.pack(fill="x", padx=8, pady=4)
-        gen.columnconfigure(1, weight=1)
-        ttk.Label(gen, text="TTS model:").grid(row=0, column=0, sticky="w", **pad)
-        self.tts_model_var = tk.StringVar(value=config.MODEL_ID)
-        ttk.Combobox(gen, textvariable=self.tts_model_var, values=TTS_MODELS) \
-            .grid(row=0, column=1, columnspan=2, sticky="ew", **pad)
-        ttk.Label(gen, text="Language:").grid(row=1, column=0, sticky="w", **pad)
-        self.language_var = tk.StringVar(value=config.LANGUAGE)
-        ttk.Combobox(gen, textvariable=self.language_var, values=LANGUAGES) \
-            .grid(row=1, column=1, columnspan=2, sticky="ew", **pad)
-        self.language_var.trace_add("write", self._on_language_change)
-        ttk.Label(gen, text="Instruct:").grid(row=2, column=0, sticky="w", **pad)
-        self.instruct_var = tk.StringVar(value=config.INSTRUCT)
-        ttk.Entry(gen, textvariable=self.instruct_var) \
-            .grid(row=2, column=1, columnspan=2, sticky="ew", **pad)
-        # Live-apply to a running pipeline (takes effect on the next utterance).
-        self.instruct_var.trace_add("write", self._on_instruct_change)
-        self.expressive_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(
-            gen, variable=self.expressive_var,
-            text="Experimental: expressive clone — follow Instruct "
-                 "(1.7B CustomVoice; ignores TTS-model choice)",
-        ).grid(row=3, column=0, columnspan=3, sticky="w", **pad)
-        self.icl_var = tk.BooleanVar(value=True)  # recommended
-        ttk.Checkbutton(
-            gen, variable=self.icl_var,
-            text="      ↳ ICL mode (uses reference audio + text; stronger "
-                 "instruction-following · needs accurate Reference text)",
-        ).grid(row=4, column=0, columnspan=3, sticky="w", **pad)
+    def _build_devices(self, col):
+        card = Card("Devices")
+        card.label(0, "Microphone")
+        self.mic_combo = QComboBox()
+        card.grid.addWidget(self.mic_combo, 0, 1)
+        self.refresh_btn = QPushButton("↻")
+        self.refresh_btn.setObjectName("Ghost")
+        self.refresh_btn.setFixedWidth(40)
+        self.refresh_btn.setToolTip("Rescan audio devices")
+        self.refresh_btn.clicked.connect(self._refresh_devices)
+        card.grid.addWidget(self.refresh_btn, 0, 2)
+        card.label(1, "Output")
+        self.out_combo = QComboBox()
+        card.grid.addWidget(self.out_combo, 1, 1, 1, 2)
+        col.addWidget(card)
 
-        # --- Speech-to-text ---
-        stt = ttk.LabelFrame(sec, text="Speech-to-text")
-        stt.pack(fill="x", padx=8, pady=4)
-        stt.columnconfigure(1, weight=1)
-        ttk.Label(stt, text="STT model:").grid(row=0, column=0, sticky="w", **pad)
-        self.stt_model_var = tk.StringVar(value=config.STT_MODEL)
-        ttk.Combobox(stt, textvariable=self.stt_model_var, values=STT_MODELS) \
-            .grid(row=0, column=1, sticky="ew", **pad)
-        ttk.Label(stt, text="End-of-speech silence (ms):") \
-            .grid(row=1, column=0, sticky="w", **pad)
-        self.vad_var = tk.StringVar(value=str(config.VAD_SILENCE_MS))
-        ttk.Spinbox(stt, from_=200, to=2000, increment=100, width=8,
-                    textvariable=self.vad_var).grid(row=1, column=1, sticky="w", **pad)
+    def _build_voice(self, col):
+        card = Card("Voice")
+        card.label(0, "Clip")
+        self.voice_combo = QComboBox()
+        self.voice_combo.setMaxVisibleItems(18)
+        self.voice_combo.currentIndexChanged.connect(self._on_voice_selected)
+        card.grid.addWidget(self.voice_combo, 0, 1)
+        browse = QPushButton("Browse…")
+        browse.setObjectName("Ghost")
+        browse.clicked.connect(self._browse_voice)
+        card.grid.addWidget(browse, 0, 2)
+        card.label(1, "Reference text")
+        self.ref_text = QPlainTextEdit()
+        self.ref_text.setFixedHeight(70)
+        card.grid.addWidget(self.ref_text, 1, 1)
+        tx = QPushButton("Auto-\ntranscribe")
+        tx.setObjectName("Ghost")
+        tx.clicked.connect(self._auto_transcribe)
+        card.grid.addWidget(tx, 1, 2)
+        col.addWidget(card)
 
-        # --- Routing ---
-        route = ttk.LabelFrame(sec, text="Routing")
-        route.pack(fill="x", padx=8, pady=4)
-        self.vmic_var = tk.BooleanVar(value=VirtualMic.available())
-        vmic_chk = ttk.Checkbutton(
-            route, text=f"Expose as virtual microphone ('{self.vmic.source_name}')",
-            variable=self.vmic_var, command=self._on_vmic_toggle)
-        vmic_chk.pack(anchor="w", **pad)
-        if not VirtualMic.available():
-            vmic_chk.configure(state="disabled")
-            self.vmic_var.set(False)
-        self.duplex_var = tk.BooleanVar(value=not self.vmic_var.get())
-        ttk.Checkbutton(
-            route, text="Mute mic while speaking (echo guard — uncheck for barge-in)",
-            variable=self.duplex_var).pack(anchor="w", **pad)
+    def _build_generation(self, col):
+        card = Card("Generation")
+        card.label(0, "TTS model")
+        self.tts_combo = QComboBox()
+        self.tts_combo.setEditable(True)
+        self.tts_combo.addItems(TTS_MODELS)
+        self.tts_combo.setCurrentText(config.MODEL_ID)
+        card.grid.addWidget(self.tts_combo, 0, 1, 1, 2)
+        card.label(1, "Language")
+        self.lang_combo = QComboBox()
+        self.lang_combo.setEditable(True)
+        self.lang_combo.addItems(LANGUAGES)
+        self.lang_combo.setCurrentText(config.LANGUAGE)
+        self.lang_combo.currentTextChanged.connect(self._on_language_change)
+        card.grid.addWidget(self.lang_combo, 1, 1, 1, 2)
+        card.label(2, "Instruct")
+        self.instruct_edit = QLineEdit(config.INSTRUCT)
+        self.instruct_edit.setPlaceholderText("Style/tone prompt (optional)")
+        self.instruct_edit.textChanged.connect(self._on_instruct_change)
+        card.grid.addWidget(self.instruct_edit, 2, 1, 1, 2)
+        self.expressive_chk = QCheckBox(
+            "Expressive clone — follow Instruct (1.7B CustomVoice; ignores TTS-model choice)")
+        card.grid.addWidget(self.expressive_chk, 3, 0, 1, 3)
+        self.icl_chk = QCheckBox(
+            "↳ ICL mode — use reference audio + text (stronger; needs accurate reference text)")
+        self.icl_chk.setChecked(True)
+        card.grid.addWidget(self.icl_chk, 4, 0, 1, 3)
+        col.addWidget(card)
 
-        # --- Controls ---
-        ctrl = ttk.Frame(self.root)
-        ctrl.pack(fill="x", padx=8, pady=6)
-        self.apply_btn = ttk.Button(ctrl, text="Apply settings", style="Accent.TButton",
-                                    command=self._apply)
-        self.apply_btn.pack(side="left")
-        self.stop_btn = ttk.Button(ctrl, text="Stop", style="Danger.TButton",
-                                   command=self._stop, state="disabled")
-        self.stop_btn.pack(side="left", padx=6)
-        self.status_dot = ttk.Label(ctrl, text="●", foreground=C_FG_MUTED)
-        self.status_dot.pack(side="right", padx=(6, 0))
-        self.status_var = tk.StringVar(value="idle")
-        ttk.Label(ctrl, textvariable=self.status_var, style="Muted.TLabel") \
-            .pack(side="right")
+    def _build_stt(self, col):
+        card = Card("Speech-to-text")
+        card.label(0, "STT model")
+        self.stt_combo = QComboBox()
+        self.stt_combo.setEditable(True)
+        self.stt_combo.addItems(STT_MODELS)
+        self.stt_combo.setCurrentText(config.STT_MODEL)
+        card.grid.addWidget(self.stt_combo, 0, 1)
+        card.label(1, "End-of-speech silence (ms)")
+        self.vad_spin = QSpinBox()
+        self.vad_spin.setRange(200, 2000)
+        self.vad_spin.setSingleStep(100)
+        self.vad_spin.setValue(int(config.VAD_SILENCE_MS))
+        card.grid.addWidget(self.vad_spin, 1, 1, Qt.AlignLeft)
+        col.addWidget(card)
 
-        self.log = tk.Text(
-            self.root, height=8, wrap="word", state="disabled", bg=C_BG_INPUT,
-            fg=C_FG, relief="flat", highlightthickness=1, highlightbackground=C_BORDER,
-            padx=8, pady=6, insertbackground=C_FG)
-        self.log.pack(side="top", fill="x", padx=8, pady=(0, 4))
-        self.log.tag_configure("you", foreground=C_GREEN)
-        self.log.tag_configure("typed", foreground="#00a8fc")
-        self.log.tag_configure("err", foreground=C_RED)
-        self.log.tag_configure("dim", foreground=C_FG_MUTED)
-
-        # --- Message box: type text to speak it ---
-        msg = ttk.Frame(self.root)
-        msg.pack(fill="x", padx=8, pady=(0, 8))
-        self.msg_var = tk.StringVar()
-        self.msg_entry = ttk.Entry(msg, textvariable=self.msg_var)
-        self.msg_entry.pack(side="left", fill="x", expand=True)
-        self.msg_entry.bind("<Return>", lambda _e: self._send_text())
-        self._init_placeholder()
-        ttk.Button(msg, text="Send", style="Accent.TButton",
-                   command=self._send_text).pack(side="left", padx=(6, 0))
+    def _build_routing(self, col):
+        card = Card("Routing")
+        self.vmic_chk = QCheckBox(f"Expose as virtual microphone ('{self.vmic.source_name}')")
+        avail = VirtualMic.available()
+        self.vmic_chk.setChecked(avail)
+        self.vmic_chk.setEnabled(avail)
+        self.vmic_chk.toggled.connect(self._on_vmic_toggle)
+        card.grid.addWidget(self.vmic_chk, 0, 0, 1, 3)
+        self.duplex_chk = QCheckBox("Mute mic while speaking (echo guard — uncheck for barge-in)")
+        self.duplex_chk.setChecked(not avail)
+        card.grid.addWidget(self.duplex_chk, 1, 0, 1, 3)
+        if not avail:
+            hint = QLabel("Virtual mic needs PulseAudio/PipeWire (pactl). "
+                          "On Windows, use VB-CABLE as the output device.")
+            hint.setObjectName("Hint")
+            hint.setWordWrap(True)
+            card.grid.addWidget(hint, 2, 0, 1, 3)
+        col.addWidget(card)
 
     # ---- devices / voices ------------------------------------------------
     def _refresh_devices(self):
         import sounddevice as sd
 
-        sd._terminate()  # re-scan so new virtual devices show up
+        sd._terminate()
         sd._initialize()
+        prev_mic, prev_out = self.mic_combo.currentText(), self.out_combo.currentText()
         self.mic_map = {AUTO_LABEL: None}
         self.out_map = {AUTO_LABEL: None}
         for i, d in enumerate(sd.query_devices()):
@@ -330,77 +430,85 @@ class App:
                 self.mic_map[label] = i
             if d["max_output_channels"] > 0:
                 self.out_map[label] = i
-        self.mic_combo["values"] = list(self.mic_map)
-        self.out_combo["values"] = list(self.out_map)
-        if not self.mic_combo.get():
-            self.mic_combo.set(AUTO_LABEL)
-        if not self.out_combo.get():
-            self.out_combo.set(AUTO_LABEL)
+        for combo, mapping, prev in ((self.mic_combo, self.mic_map, prev_mic),
+                                     (self.out_combo, self.out_map, prev_out)):
+            combo.blockSignals(True)
+            combo.clear()
+            combo.addItems(list(mapping))
+            combo.setCurrentText(prev if prev in mapping else AUTO_LABEL)
+            combo.blockSignals(False)
 
     def _populate_voices(self):
-        """List unique audio clips in assets/ (default config clip first)."""
+        """List clips in assets/ then personalities, grouped with separators."""
         self._voice_paths.clear()
+        self.voice_combo.blockSignals(True)
+        self.voice_combo.clear()
+
+        def add(label: str, path: str):
+            self._voice_paths[label] = path
+            self.voice_combo.addItem(label)
+
         seen_stems = set()
-        files = sorted(config.ASSETS_DIR.glob("*"))
-        for f in files:
+        for f in sorted(config.ASSETS_DIR.glob("*")):
             if f.suffix.lower() in AUDIO_EXTS and f.stem not in seen_stems:
                 seen_stems.add(f.stem)
-                # prefer an existing .wav sibling (already prepped) if present
                 wav = f.with_suffix(".wav")
-                self._voice_paths[f.stem] = str(wav if wav.exists() else f)
-        # Append personality presets, labelled "Name — Category" for grouping.
+                add(f.stem, str(wav if wav.exists() else f))
+
+        # Only tag the category when there's more than one (avoids a redundant
+        # "— Popular Voices" on every row when the catalog is single-category).
+        multi_cat = len({p["category"] for p in self.personalities}) > 1
+        last_cat = None
         for p in self.personalities:
-            label = f"{p['name']} — {p['category']}"
-            while label in self._voice_paths:
-                label += " "
-            self._voice_paths[label] = p["audio"]
-        self.voice_combo["values"] = list(self._voice_paths)
-        # default selection: the config reference clip's stem, else first
+            if last_cat != p["category"]:
+                if self.voice_combo.count():
+                    self.voice_combo.insertSeparator(self.voice_combo.count())
+                last_cat = p["category"]
+            label = f"{p['name']} — {p['category']}" if multi_cat else p["name"]
+            add(label, p["audio"])
+
+        # default selection: config reference clip's stem, else first real item
         default_stem = Path(config.REF_AUDIO_MP3).stem
-        if default_stem in self._voice_paths:
-            self.voice_combo.set(default_stem)
-        elif self._voice_paths:
-            self.voice_combo.set(next(iter(self._voice_paths)))
+        self.voice_combo.setCurrentText(
+            default_stem if default_stem in self._voice_paths
+            else next(iter(self._voice_paths), ""))
+        self.voice_combo.blockSignals(False)
         self._on_voice_selected()
 
     def _current_voice_path(self) -> str | None:
-        return self._voice_paths.get(self.voice_combo.get())
+        return self._voice_paths.get(self.voice_combo.currentText())
 
-    def _on_voice_selected(self, _event=None):
+    def _on_voice_selected(self, *_):
         path = self._current_voice_path()
         if not path:
             return
-        # remembered text > preset > leave as-is
         text = self.ref_texts.get(path) or self._preset_texts.get(Path(path).stem)
         if text is not None:
-            self._set_ref_text(text)
+            self.ref_text.setPlainText(text)
 
     def _browse_voice(self):
-        path = filedialog.askopenfilename(
-            title="Select a reference voice clip",
-            filetypes=[("Audio", "*.wav *.mp3 *.flac *.ogg *.m4a *.opus"),
-                       ("All files", "*.*")])
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Select a reference voice clip", str(config.ASSETS_DIR),
+            "Audio (*.wav *.mp3 *.flac *.ogg *.m4a *.opus);;All files (*)")
         if not path:
             return
         label = Path(path).name
         self._voice_paths[label] = path
-        self.voice_combo["values"] = list(self._voice_paths)
-        self.voice_combo.set(label)
+        self.voice_combo.blockSignals(True)
+        self.voice_combo.addItem(label)
+        self.voice_combo.setCurrentText(label)
+        self.voice_combo.blockSignals(False)
         self._on_voice_selected()
 
-    def _set_ref_text(self, text: str):
-        self.ref_text.delete("1.0", "end")
-        self.ref_text.insert("1.0", text)
-
     def _get_ref_text(self) -> str:
-        return self.ref_text.get("1.0", "end").strip()
+        return self.ref_text.toPlainText().strip()
 
     # ---- auto-transcribe -------------------------------------------------
     def _auto_transcribe(self):
         path = self._current_voice_path()
         if not path:
             return
-        self._log(f"transcribing {Path(path).name}…", "dim")
+        self._log(f"transcribing {Path(path).name}…", C_FG_MUTED)
         threading.Thread(target=self._do_transcribe, args=(path,), daemon=True).start()
 
     def _do_transcribe(self, path: str):
@@ -409,110 +517,78 @@ class App:
 
             device, index = _parse_cuda(config.DEVICE)
             compute = config.STT_COMPUTE if device == "cuda" else "int8"
-            model = WhisperModel(self.stt_model_var.get().strip() or config.STT_MODEL,
+            model = WhisperModel(self.stt_combo.currentText().strip() or config.STT_MODEL,
                                  device=device, device_index=index, compute_type=compute)
             segments, _ = model.transcribe(str(path), language="en", beam_size=1)
             text = " ".join(s.text.strip() for s in segments).strip()
-            # Hand the result back to the UI thread via the event queue — Tk
-            # widget calls (and root.after) are unreliable from worker threads.
             if text:
                 self.events_q.put({"type": "_ref_text", "text": text})
                 self.events_q.put({"type": "info", "text": "transcription done"})
             else:
                 self.events_q.put({"type": "info", "text": "transcription: no speech detected"})
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             self.events_q.put({"type": "error", "text": f"transcribe failed: {exc}"})
 
     # ---- control ---------------------------------------------------------
     @staticmethod
-    def _selected(combo, mapping):
-        return mapping.get(combo.get(), None)
+    def _selected(combo: QComboBox, mapping: dict):
+        return mapping.get(combo.currentText())
 
-    def _on_vmic_toggle(self):
-        # Virtual mic / headphones have no acoustic echo path → guard off by default.
-        self.duplex_var.set(not self.vmic_var.get())
+    def _on_vmic_toggle(self, on: bool):
+        self.duplex_chk.setChecked(not on)
 
     def _on_instruct_change(self, *_):
         if self.pipeline and self.pipeline.running:
-            self.pipeline.set_instruct(self.instruct_var.get())
-
-    # ---- type-to-speak ---------------------------------------------------
-    def _init_placeholder(self):
-        self._ph_on = False
-        self._show_placeholder()
-        self.msg_entry.bind("<FocusIn>", self._ph_focus_in)
-        self.msg_entry.bind("<FocusOut>", self._ph_focus_out)
-
-    def _show_placeholder(self):
-        self.msg_var.set("Type a message to speak…")
-        self.msg_entry.configure(style="Placeholder.TEntry")
-        self._ph_on = True
-
-    def _ph_focus_in(self, _e):
-        if self._ph_on:
-            self.msg_var.set("")
-            self.msg_entry.configure(style="TEntry")
-            self._ph_on = False
-
-    def _ph_focus_out(self, _e):
-        if not self.msg_var.get().strip():
-            self._show_placeholder()
-
-    def _send_text(self):
-        if self._ph_on:
-            return
-        text = self.msg_var.get().strip()
-        if not text:
-            return
-        if not (self.pipeline and self.pipeline.running):
-            self._apply()  # start the pipeline first (loads the model)
-        if self.pipeline and self.pipeline.say(text):
-            self._log(f"[type] {text}", "typed")
-            self.msg_var.set("")
-        else:
-            self._log("couldn't queue message — press Apply settings first", "dim")
+            self.pipeline.set_instruct(self.instruct_edit.text())
 
     def _on_language_change(self, *_):
         if self.pipeline and self.pipeline.running:
-            self.pipeline.set_language(self.language_var.get())
+            self.pipeline.set_language(self.lang_combo.currentText())
+
+    def _send_text(self):
+        text = self.msg_entry.text().strip()
+        if not text:
+            return
+        if not (self.pipeline and self.pipeline.running):
+            self._apply()
+        if self.pipeline and self.pipeline.say(text):
+            self._log(f"[type] {text}", C_BLUE)
+            self.msg_entry.clear()
+        else:
+            self._log("couldn't queue message — press Apply settings first", C_FG_MUTED)
 
     def _collect_config(self) -> dict:
-        """Snapshot every widget value (must run on the UI thread)."""
         voice_path = self._current_voice_path()
         ref_text = self._get_ref_text()
         if voice_path:
-            self.ref_texts[voice_path] = ref_text  # remember per-clip
+            self.ref_texts[voice_path] = ref_text
         return dict(
             input_device=self._selected(self.mic_combo, self.mic_map),
             output_device=self._selected(self.out_combo, self.out_map),
             voice_path=voice_path,
             ref_text=ref_text,
-            tts_model=self.tts_model_var.get().strip(),
-            stt_model=self.stt_model_var.get().strip(),
-            vad=self.vad_var.get(),
-            instruct=self.instruct_var.get(),
-            language=self.language_var.get(),
-            expressive=self.expressive_var.get(),
-            icl=self.icl_var.get(),
-            vmic=self.vmic_var.get(),
-            duplex=self.duplex_var.get(),
+            tts_model=self.tts_combo.currentText().strip(),
+            stt_model=self.stt_combo.currentText().strip(),
+            vad=str(self.vad_spin.value()),
+            instruct=self.instruct_edit.text(),
+            language=self.lang_combo.currentText(),
+            expressive=self.expressive_chk.isChecked(),
+            icl=self.icl_chk.isChecked(),
+            vmic=self.vmic_chk.isChecked(),
+            duplex=self.duplex_chk.isChecked(),
         )
 
     def _apply(self):
-        """(Re)start the pipeline with the current settings."""
         cfg = self._collect_config()
         self._save_settings()
-        self.apply_btn.configure(state="disabled")
+        self.apply_btn.setEnabled(False)
 
         if not (self.pipeline and self.pipeline.running):
-            self.status_var.set("loading…")
-            self._launch(cfg)  # nothing running → start now on the UI thread
+            self._set_status("loading")
+            self._launch(cfg)
             return
 
-        # Running → stop in a worker (slow join), then relaunch on the UI thread
-        # via the event queue (_poll_events drains it; Tk calls must stay on the
-        # main thread).
-        self.status_var.set("applying…")
+        self._set_status("applying")
 
         def worker():
             self._teardown()
@@ -521,9 +597,7 @@ class App:
         threading.Thread(target=worker, daemon=True).start()
 
     def _launch(self, cfg: dict):
-        """Create + start a fresh pipeline from a config snapshot (UI thread)."""
         if cfg["tts_model"]:
-            # load_model frees the old checkpoint automatically when the id changes
             config.MODEL_ID = cfg["tts_model"]
         config.STT_MODEL = cfg["stt_model"] or config.STT_MODEL
         try:
@@ -535,21 +609,21 @@ class App:
         if cfg["vmic"]:
             try:
                 sink = self.vmic.create()
-            except Exception as exc:
-                self._log(f"virtual mic failed: {exc}", "err")
-                self.apply_btn.configure(state="normal")
-                self.status_var.set("idle")
+            except Exception as exc:  # noqa: BLE001
+                self._log(f"virtual mic failed: {exc}", C_RED)
+                self.apply_btn.setEnabled(True)
+                self._set_status("idle")
                 return
             os.environ["PULSE_SINK"] = sink
             output_device = "pulse"
             self._log(f"virtual mic '{self.vmic.source_name}' active — select it as "
-                      "the microphone in your other app", "dim")
+                      "the microphone in your other app", C_FG_MUTED)
         else:
             os.environ.pop("PULSE_SINK", None)
 
         if cfg["expressive"]:
             self._log("expressive clone on — 1.7B CustomVoice; first use extracts "
-                      "the voice embedding (may take a few seconds)", "dim")
+                      "the voice embedding (may take a few seconds)", C_FG_MUTED)
 
         self.pipeline = Pipeline(
             cfg["input_device"], output_device, cfg["instruct"], self.events_q,
@@ -557,16 +631,16 @@ class App:
             ref_text=cfg["ref_text"] or None, language=cfg["language"] or None,
             expressive=cfg["expressive"], icl=cfg["icl"])
         self.pipeline.start()
-        self.apply_btn.configure(state="normal")  # re-apply anytime to restart
-        self.stop_btn.configure(state="normal")
+        self.apply_btn.setEnabled(True)
+        self.stop_btn.setEnabled(True)
 
     def _stop(self):
-        self.stop_btn.configure(state="disabled")
-        self.status_var.set("stopping…")
+        self.stop_btn.setEnabled(False)
+        self._set_status("stopping")
 
         def worker():
             self._teardown()
-            unload_models()  # Stop fully releases the TTS model's GPU memory
+            unload_models()
             self.events_q.put({"type": "status", "value": "stopped"})
 
         threading.Thread(target=worker, daemon=True).start()
@@ -588,55 +662,54 @@ class App:
                 if kind == "_relaunch":
                     self._launch(ev["cfg"])
                 elif kind == "_ref_text":
-                    self._set_ref_text(ev["text"])
+                    self.ref_text.setPlainText(ev["text"])
                 elif kind == "status":
-                    self.status_var.set(ev["value"])
-                    self.status_dot.configure(foreground={
-                        "listening": C_GREEN, "speaking": C_ACCENT,
-                        "loading": "#faa61a", "stopped": C_FG_MUTED,
-                    }.get(ev["value"], C_FG_MUTED))
+                    self._set_status(ev["value"])
                 elif kind == "user":
-                    self._log(f"[you] {ev['text']}", "you")
+                    self._log(f"[you] {ev['text']}", C_GREEN)
                 elif kind == "error":
-                    self._log(ev["text"], "err")
+                    self._log(ev["text"], C_RED)
                 else:
-                    self._log(ev["text"], "dim")
+                    self._log(ev["text"], C_FG_MUTED)
         except queue.Empty:
             pass
-        self.root.after(100, self._poll_events)
 
-    def _log(self, text: str, tag: str | None = None):
-        self.log.configure(state="normal")
-        self.log.insert("end", text + "\n", (tag,) if tag else ())
-        self.log.see("end")
-        self.log.configure(state="disabled")
+    def _set_status(self, value: str):
+        self.status_pill.setText(f"● {value}")
+        self.status_pill.setStyleSheet(self._pill_style(STATUS_COLORS.get(value, C_FG_MUTED)))
+
+    def _log(self, text: str, color: str = C_FG):
+        safe = html.escape(text)
+        self.log.append(f'<span style="color:{color}">{safe}</span>')
+        sb = self.log.verticalScrollBar()
+        sb.setValue(sb.maximum())
 
     # ---- settings persistence -------------------------------------------
     def _load_settings(self) -> dict:
         try:
             return json.loads(SETTINGS_PATH.read_text())
-        except Exception:
+        except Exception:  # noqa: BLE001
             return {}
 
     def _save_settings(self):
         data = {
-            "mic": self.mic_combo.get(),
-            "output": self.out_combo.get(),
-            "voice": self.voice_combo.get(),
-            "tts_model": self.tts_model_var.get(),
-            "language": self.language_var.get(),
-            "instruct": self.instruct_var.get(),
-            "stt_model": self.stt_model_var.get(),
-            "vad_ms": self.vad_var.get(),
-            "vmic": self.vmic_var.get(),
-            "duplex": self.duplex_var.get(),
-            "expressive": self.expressive_var.get(),
-            "icl": self.icl_var.get(),
+            "mic": self.mic_combo.currentText(),
+            "output": self.out_combo.currentText(),
+            "voice": self.voice_combo.currentText(),
+            "tts_model": self.tts_combo.currentText(),
+            "language": self.lang_combo.currentText(),
+            "instruct": self.instruct_edit.text(),
+            "stt_model": self.stt_combo.currentText(),
+            "vad_ms": str(self.vad_spin.value()),
+            "vmic": self.vmic_chk.isChecked(),
+            "duplex": self.duplex_chk.isChecked(),
+            "expressive": self.expressive_chk.isChecked(),
+            "icl": self.icl_chk.isChecked(),
             "ref_texts": self.ref_texts,
         }
         try:
             SETTINGS_PATH.write_text(json.dumps(data, indent=2))
-        except Exception:
+        except Exception:  # noqa: BLE001
             pass
 
     def _apply_settings(self):
@@ -644,42 +717,52 @@ class App:
         if not s:
             return
         if s.get("mic") in self.mic_map:
-            self.mic_combo.set(s["mic"])
+            self.mic_combo.setCurrentText(s["mic"])
         if s.get("output") in self.out_map:
-            self.out_combo.set(s["output"])
+            self.out_combo.setCurrentText(s["output"])
         if s.get("voice") in self._voice_paths:
-            self.voice_combo.set(s["voice"])
+            self.voice_combo.setCurrentText(s["voice"])
             self._on_voice_selected()
-        for var, key in [(self.tts_model_var, "tts_model"),
-                         (self.language_var, "language"),
-                         (self.instruct_var, "instruct"),
-                         (self.stt_model_var, "stt_model"),
-                         (self.vad_var, "vad_ms")]:
-            if s.get(key) is not None:
-                var.set(s[key])
-        if "vmic" in s:
-            self.vmic_var.set(s["vmic"])
+        if s.get("tts_model"):
+            self.tts_combo.setCurrentText(s["tts_model"])
+        if s.get("language"):
+            self.lang_combo.setCurrentText(s["language"])
+        if s.get("instruct") is not None:
+            self.instruct_edit.setText(s["instruct"])
+        if s.get("stt_model"):
+            self.stt_combo.setCurrentText(s["stt_model"])
+        if s.get("vad_ms"):
+            try:
+                self.vad_spin.setValue(int(s["vad_ms"]))
+            except (TypeError, ValueError):
+                pass
+        if "vmic" in s and self.vmic_chk.isEnabled():
+            self.vmic_chk.setChecked(bool(s["vmic"]))
         if "duplex" in s:
-            self.duplex_var.set(s["duplex"])
+            self.duplex_chk.setChecked(bool(s["duplex"]))
         if "expressive" in s:
-            self.expressive_var.set(s["expressive"])
+            self.expressive_chk.setChecked(bool(s["expressive"]))
         if "icl" in s:
-            self.icl_var.set(s["icl"])
+            self.icl_chk.setChecked(bool(s["icl"]))
 
-    def _on_close(self):
+    def closeEvent(self, event):  # noqa: N802 (Qt override)
         try:
             self._save_settings()
             self._teardown()
-            unload_models()  # release the TTS model's GPU memory on exit
+            unload_models()
         finally:
-            self.root.destroy()
+            event.accept()
 
 
 def main() -> int:
-    root = tk.Tk()
-    App(root)
-    root.mainloop()
-    return 0
+    app = QApplication(sys.argv)
+    app.setStyle("Fusion")
+    app.setApplicationName("Qwen3-TTS Voice Clone")
+    app.setFont(QFont(app.font().family(), 10))
+    app.setStyleSheet(_qss())
+    win = App()
+    win.show()
+    return app.exec()
 
 
 if __name__ == "__main__":

@@ -22,10 +22,10 @@ if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
     exit 1
 }
 
-Write-Host ">> Ensuring realtime deps (faster-whisper, silero-vad, sounddevice)"
-# --inexact: add the realtime extra without uninstalling anything outside it
+Write-Host ">> Ensuring GUI deps (PySide6 + faster-whisper, silero-vad, sounddevice)"
+# --inexact: add the gui extra without uninstalling anything outside it
 # (on Windows flash-attn won't be present anyway; harmless here).
-uv sync --inexact --extra realtime
+uv sync --inexact --extra gui
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Write-Host ">> Launching GUI"

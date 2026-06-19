@@ -12,10 +12,10 @@ if ! command -v uv >/dev/null 2>&1; then
   exit 1
 fi
 
-echo ">> Ensuring realtime deps (faster-whisper, silero-vad, sounddevice)"
-# --inexact: add the realtime extra without uninstalling anything outside it
+echo ">> Ensuring GUI deps (PySide6 + faster-whisper, silero-vad, sounddevice)"
+# --inexact: add the gui extra without uninstalling anything outside it
 # (e.g. an optionally-installed flash-attn from `make flash-attn`).
-uv sync --inexact --extra realtime
+uv sync --inexact --extra gui
 
 echo ">> Launching GUI"
 exec uv run python -m src.gui

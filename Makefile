@@ -28,7 +28,7 @@ flash-attn:       ## Install prebuilt FlashAttention 2 (optional, speeds up infe
 demo:             ## Generate a sample line in the cloned voice
 	uv run python -m src.clone_voice "The trade deficit is way down, believe me." outputs/demo.wav
 
-gui:              ## Launch the speech-to-speech GUI (syncs realtime deps first)
+gui:              ## Launch the PySide6 speech-to-speech GUI (syncs gui deps first)
 	./run-gui.sh
 
 clean:            ## Remove generated outputs and the prepped WAV

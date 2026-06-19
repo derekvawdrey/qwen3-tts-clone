@@ -83,24 +83,32 @@ Installs faster-whisper (STT), Silero VAD (utterance detection), and sounddevice
 uv sync --extra realtime
 ```
 
-**GUI** (recommended):
+**GUI** (recommended) — a modern PySide6 (Qt 6) desktop app. The `gui` extra
+pulls in PySide6 plus the realtime stack:
 
 ```bash
-uv run python -m src.gui
+make gui                       # syncs the gui extra + launches  (or ./run-gui.sh)
+# or manually:
+uv sync --extra gui && uv run python -m src.gui
 ```
+
+> The legacy Tkinter GUI is still available at `python -m src.gui_tk` (no extra
+> deps beyond `realtime`) if you can't install Qt.
 
 From the GUI you can choose, without touching `config.py`:
 
 - **Devices** — microphone and output (or Auto / PulseAudio).
-- **Voice sample** — pick any clip in `assets/` (or **Browse…** for your own),
-  edit its **reference text** (pre-filled for the bundled voices, remembered
-  per-clip), or **Auto-transcribe** it with Whisper.
+- **Voice** — pick any clip in `assets/` or a bundled **personality** (grouped
+  by category), **Browse…** for your own, edit its **reference text** (pre-filled
+  and remembered per-clip), or **Auto-transcribe** it with Whisper.
 - **Generation** — TTS model (0.6B/1.7B), language, and the `instruct` style prompt.
 - **Speech-to-text** — Whisper model size and the end-of-speech silence threshold.
 - **Routing** — the virtual mic and echo-guard toggles.
 
 Settings persist to `.gui_settings.json` and are restored next launch. Changes
-apply when you press **Start** (switching the TTS model triggers a reload).
+apply when you press **Apply settings** (switching the TTS model triggers a
+reload). Type into the message box and hit **Send**/Enter to speak arbitrary
+text in the cloned voice.
 
 **Console** loop (no GUI):
 
