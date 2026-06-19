@@ -401,7 +401,7 @@ class App(QMainWindow):
         card.grid.addWidget(self.expressive_chk, 3, 0, 1, 3)
         self.icl_chk = QCheckBox(
             "↳ ICL mode — use reference audio + text (stronger; needs accurate reference text)")
-        self.icl_chk.setChecked(True)
+        self.icl_chk.setChecked(False)
         card.grid.addWidget(self.icl_chk, 4, 0, 1, 3)
         col.addWidget(card)
 
