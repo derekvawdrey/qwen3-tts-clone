@@ -290,6 +290,17 @@ class Pipeline:
     def running(self) -> bool:
         return bool(self._threads)
 
+    def say(self, text: str) -> bool:
+        """Queue typed text to be spoken (same path as a transcribed utterance)."""
+        text = (text or "").strip()
+        if not text or not self._threads:
+            return False
+        try:
+            self.text_q.put_nowait(text)
+            return True
+        except queue.Full:
+            return False
+
     def set_instruct(self, value):
         """Live-update the style prompt; takes effect on the next utterance."""
         self.instruct = value
