@@ -28,9 +28,12 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import config  # noqa: E402
 from src.clone_voice import (  # noqa: E402
+    EXPRESSIVE_TTS_MODEL,
     ensure_reference_wav,
+    get_speaker_embedding,
     load_model,
     prepare_reference,
+    synthesize_stream,
 )
 from src.helpers import StreamPlayer  # noqa: E402
 
@@ -184,7 +187,7 @@ class Speaker(threading.Thread):
 
     def __init__(self, text_q, audio_q, speaking_evt, stop_evt,
                  output_device=None, instruct=None, events_q=None, half_duplex=True,
-                 ref_audio=None, ref_text=None, language=None):
+                 ref_audio=None, ref_text=None, language=None, expressive=False):
         super().__init__(name="Speaker", daemon=True)
         self.text_q = text_q
         self.audio_q = audio_q
@@ -198,17 +201,21 @@ class Speaker(threading.Thread):
         self.ref_audio = ref_audio  # path to a reference clip, or None for config default
         self.ref_text = ref_text    # transcript of the clip, or None for config default
         self.language = language or config.LANGUAGE
+        self.expressive = expressive  # cloned identity + instruction (1.7B CustomVoice)
 
     def run(self):
-        _emit(self.events_q, "info", text="loading Qwen3-TTS…")
+        kind = "expressive clone (1.7B CustomVoice)" if self.expressive else "Qwen3-TTS"
+        _emit(self.events_q, "info", text=f"loading {kind}…")
         try:
-            model = load_model()
-            ref_audio = str(prepare_reference(self.ref_audio) if self.ref_audio
-                            else ensure_reference_wav())
+            model = load_model(EXPRESSIVE_TTS_MODEL if self.expressive else None)
+            ref_wav = str(prepare_reference(self.ref_audio) if self.ref_audio
+                          else ensure_reference_wav())
+            if self.expressive:  # extract/cache the x-vector up front (may load Base once)
+                _emit(self.events_q, "info", text="extracting speaker embedding…")
+                get_speaker_embedding(ref_wav)
         except Exception as exc:
             _emit(self.events_q, "error", text=f"TTS load failed: {exc}")
             return
-        ref_text = config.REF_TEXT if self.ref_text is None else self.ref_text
         _emit(self.events_q, "info", text="TTS ready")
 
         while not self.stop_evt.is_set():
@@ -223,13 +230,10 @@ class Speaker(threading.Thread):
             _emit(self.events_q, "status", value="speaking")
             player = StreamPlayer(device=self.output_device)
             try:
-                for chunk, sr, _timing in model.generate_voice_clone_streaming(
-                    text=text,
-                    language=self.language,
-                    ref_audio=ref_audio,
-                    ref_text=ref_text,
-                    instruct=self.instruct or None,
-                    chunk_size=8,
+                for chunk, sr in synthesize_stream(
+                    text, language=self.language, ref_audio=ref_wav,
+                    ref_text=self.ref_text, instruct=self.instruct,
+                    expressive=self.expressive,
                 ):
                     player(chunk, sr)
             except Exception as exc:  # one bad utterance shouldn't kill the loop
@@ -265,7 +269,7 @@ class Pipeline:
 
     def __init__(self, input_device=None, output_device=None, instruct=None,
                  events_q=None, half_duplex=True, ref_audio=None, ref_text=None,
-                 language=None):
+                 language=None, expressive=False):
         self.input_device = input_device
         self.output_device = output_device
         self.instruct = instruct
@@ -274,6 +278,7 @@ class Pipeline:
         self.ref_audio = ref_audio
         self.ref_text = ref_text
         self.language = language
+        self.expressive = expressive
         self.audio_q = queue.Queue(maxsize=200)   # ~6 s @ 32 ms frames
         self.text_q = queue.Queue(maxsize=4)
         self.speaking = threading.Event()
@@ -291,7 +296,7 @@ class Pipeline:
         speaker = Speaker(self.text_q, self.audio_q, self.speaking, self.stop_evt,
                           self.output_device, self.instruct, self.events_q,
                           self.half_duplex, self.ref_audio, self.ref_text,
-                          self.language)
+                          self.language, self.expressive)
         transcriber = Transcriber(self.audio_q, self.text_q, self.speaking,
                                   self.stop_evt, self.events_q, self.half_duplex)
         mic = MicSource(self.audio_q, self.stop_evt, self.input_device, self.events_q)

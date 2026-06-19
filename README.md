@@ -123,8 +123,37 @@ export INSTRUCT=""                 # disable
 >   (instruct is disabled on the 0.6B CustomVoice). Note this uses *named
 >   speakers*, not an embedding extracted from your reference audio.
 >
-> There is no reliable "cloned voice + instruction style" mode in this stack —
-> pick cloned identity (this repo) **or** instruction control (VoiceDesign).
+> There is no reliable "cloned voice + instruction style" mode in the *default*
+> path — but see the experimental hybrid below.
+
+## Experimental: expressive clone (cloned voice **+** instruction)
+
+A working hybrid that gets *both* cloned identity and instruction-following:
+
+1. Extract the speaker x-vector from your reference clip with the **1.7B Base**
+   model's speaker encoder.
+2. Synthesize on the **1.7B CustomVoice** model (which *is* trained to follow
+   instructions), feeding that x-vector as the speaker — so it clones your voice
+   while honoring the `instruct`.
+
+Enable it with the GUI checkbox **"Experimental: expressive clone"** (or
+`expressive=True` on `clone_to_file` / `clone_to_speaker`). Notes:
+
+- Uses the **1.7B CustomVoice** checkpoint regardless of the TTS-model dropdown,
+  so it downloads ~3.4 GB on first use and uses more VRAM than the 0.6B default.
+- The voice embedding is extracted once per clip and cached to
+  `outputs/refs/<clip>.spk.pt` (the Base model is loaded only for that first
+  extraction, then freed).
+- Runs on `faster-qwen3-tts`'s CUDA-graph **streaming** path (real-time-capable
+  after a one-time warmup); no custom inference code required.
+- Still "experimental": it feeds an x-vector into a model trained on preset
+  personas, so identity/instruction balance varies by voice and prompt.
+
+```python
+from src.clone_voice import clone_to_file
+clone_to_file("Target text.", "out.wav",
+              instruct="Speak with restrained frustration.", expressive=True)
+```
 
 ## FlashAttention 2 (optional, faster inference)
 

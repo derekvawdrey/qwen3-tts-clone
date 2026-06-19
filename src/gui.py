@@ -122,6 +122,12 @@ class App:
         self.instruct_var = tk.StringVar(value=config.INSTRUCT)
         ttk.Entry(gen, textvariable=self.instruct_var) \
             .grid(row=2, column=1, columnspan=2, sticky="ew", **pad)
+        self.expressive_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            gen, variable=self.expressive_var,
+            text="Experimental: expressive clone — follow Instruct "
+                 "(1.7B CustomVoice; ignores TTS-model choice)",
+        ).grid(row=3, column=0, columnspan=3, sticky="w", **pad)
 
         # --- Speech-to-text ---
         stt = ttk.LabelFrame(self.root, text="Speech-to-text")
@@ -310,11 +316,17 @@ class App:
         else:
             os.environ.pop("PULSE_SINK", None)
 
+        expressive = self.expressive_var.get()
+        if expressive:
+            self._log("expressive clone on — 1.7B CustomVoice; first use extracts "
+                      "the voice embedding (may take a few seconds)", "dim")
+
         self._save_settings()
         self.pipeline = Pipeline(
             input_device, output_device, self.instruct_var.get(), self.events_q,
             half_duplex=self.duplex_var.get(), ref_audio=voice_path,
-            ref_text=ref_text or None, language=self.language_var.get() or None)
+            ref_text=ref_text or None, language=self.language_var.get() or None,
+            expressive=expressive)
         self.pipeline.start()
         self.start_btn.configure(state="disabled")
         self.stop_btn.configure(state="normal")
@@ -377,6 +389,7 @@ class App:
             "vad_ms": self.vad_var.get(),
             "vmic": self.vmic_var.get(),
             "duplex": self.duplex_var.get(),
+            "expressive": self.expressive_var.get(),
             "ref_texts": self.ref_texts,
         }
         try:
@@ -406,6 +419,8 @@ class App:
             self.vmic_var.set(s["vmic"])
         if "duplex" in s:
             self.duplex_var.set(s["duplex"])
+        if "expressive" in s:
+            self.expressive_var.set(s["expressive"])
 
     def _on_close(self):
         try:

@@ -61,23 +61,82 @@ def prepare_reference(audio_path: str | Path) -> Path:
 
 
 @lru_cache(maxsize=1)
-def load_model():
-    """Load the Qwen3-TTS Base model once (cached for reuse across calls).
+def load_model(model_id: str | None = None):
+    """Load a Qwen3-TTS model (cached; defaults to ``config.MODEL_ID``).
 
     Uses the CUDA-graph-accelerated `faster-qwen3-tts` runtime, a drop-in
-    reimplementation of the official package (~5x faster inference).
+    reimplementation of the official package (~5x faster inference). maxsize=1
+    keeps only the active checkpoint resident; switching model_id reloads.
+    """
+    from faster_qwen3_tts import FasterQwen3TTS
+
+    model = FasterQwen3TTS.from_pretrained(
+        model_id or config.MODEL_ID,
+        device=config.DEVICE,
+        dtype=_torch_dtype(),
+        attn_implementation=config.ATTN_IMPL,
+    )
+    return model
+
+
+@lru_cache(maxsize=8)
+def get_speaker_embedding(ref_wav: str):
+    """Return the speaker x-vector for a prepared reference WAV.
+
+    Cached on disk (outputs/refs/<stem>.spk.pt) and in memory. Extracted with
+    the 1.7B Base model's speaker encoder — loaded transiently and freed, so it
+    only costs VRAM the first time a voice is seen (before the .pt cache exists).
     """
     import torch
     from faster_qwen3_tts import FasterQwen3TTS
 
-    dtype = getattr(torch, _DTYPES.get(config.DTYPE, "bfloat16"))
-    model = FasterQwen3TTS.from_pretrained(
-        config.MODEL_ID,
-        device=config.DEVICE,
-        dtype=dtype,
-        attn_implementation=config.ATTN_IMPL,
-    )
-    return model
+    pt_path = Path(ref_wav).with_suffix(".spk.pt")
+    if pt_path.exists():
+        return torch.load(pt_path, map_location="cpu")
+
+    base = FasterQwen3TTS.from_pretrained(
+        EXPRESSIVE_EMBED_MODEL, device=config.DEVICE, dtype=_torch_dtype(),
+        attn_implementation=config.ATTN_IMPL)
+    try:
+        items = base.model.create_voice_clone_prompt(
+            ref_audio=ref_wav, ref_text="", x_vector_only_mode=True)
+        emb = items[0].ref_spk_embedding.detach().to("cpu")
+    finally:
+        del base
+        torch.cuda.empty_cache()
+    torch.save(emb, pt_path)
+    return emb
+
+
+def synthesize_stream(text, *, language=None, ref_audio=None, ref_text=None,
+                      instruct=None, expressive=False):
+    """Yield (audio_chunk, sample_rate) for `text` in the cloned voice.
+
+    expressive=False: standard fast clone on ``config.MODEL_ID`` (instruct is
+    accepted but the base model follows it unreliably).
+    expressive=True:  clone identity + instruction via the 1.7B CustomVoice
+    model, feeding the reference's extracted x-vector as the speaker.
+    """
+    ref_wav = str(prepare_reference(ref_audio) if ref_audio else ensure_reference_wav())
+    ref_text = config.REF_TEXT if ref_text is None else ref_text
+    language = language or config.LANGUAGE
+    instruct = config.INSTRUCT if instruct is None else instruct
+
+    if expressive:
+        emb = get_speaker_embedding(ref_wav).to(config.DEVICE).to(_torch_dtype())
+        model = load_model(EXPRESSIVE_TTS_MODEL)
+        stream = model.generate_voice_clone_streaming(
+            text=text, language=language,
+            voice_clone_prompt={"ref_spk_embedding": [emb]},
+            instruct=instruct or None, xvec_only=True, chunk_size=8)
+    else:
+        model = load_model()
+        stream = model.generate_voice_clone_streaming(
+            text=text, language=language, ref_audio=ref_wav, ref_text=ref_text,
+            instruct=instruct or None, chunk_size=8)
+
+    for chunk, sr, _timing in stream:
+        yield chunk, sr
 
 
 def clone_to_file(
@@ -88,6 +147,7 @@ def clone_to_file(
     ref_audio: str | Path | None = None,
     ref_text: str | None = None,
     instruct: str | None = None,
+    expressive: bool = False,
 ) -> Path:
     """Synthesize `text` in the cloned reference voice and write a WAV.
 
@@ -101,29 +161,26 @@ def clone_to_file(
     about this). Reliable instruction control lives in the separate VoiceDesign
     (no clone) / CustomVoice (named speakers, 1.7B) checkpoints.
 
+    Set ``expressive=True`` for the experimental cloned-identity + instruction
+    mode (1.7B CustomVoice; see ``synthesize_stream``).
+
     Returns the path to the written file.
     """
+    import numpy as np
     import soundfile as sf
 
-    ref_audio = Path(ref_audio) if ref_audio else ensure_reference_wav()
-    ref_text = ref_text if ref_text is not None else config.REF_TEXT
-    language = language or config.LANGUAGE
-    instruct = instruct if instruct is not None else config.INSTRUCT
-
-    model = load_model()
-    wavs, sr = model.generate_voice_clone_streaming(
-        text=text,
-        language=language,
-        ref_audio=str(ref_audio),
-        ref_text=ref_text,
-        instruct=instruct or None,
-        chunk_size=8
-    )
+    chunks, sr = [], config.SAMPLE_RATE
+    for chunk, sr in synthesize_stream(
+        text, language=language, ref_audio=ref_audio, ref_text=ref_text,
+        instruct=instruct, expressive=expressive,
+    ):
+        chunks.append(chunk)
 
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    sf.write(str(out_path), wavs[0], sr)
+    sf.write(str(out_path), np.concatenate(chunks), sr)
     return out_path
+
 
 def clone_to_speaker(
     text: str,
@@ -131,24 +188,16 @@ def clone_to_speaker(
     ref_audio: str | Path | None = None,
     ref_text: str | None = None,
     instruct: str | None = None,
+    expressive: bool = False,
 ) -> None:
-    """Synthesize `text` in the cloned reference voice and write to speaker."""
-    import soundfile as sf
-
-    ref_audio = Path(ref_audio) if ref_audio else ensure_reference_wav()
-    ref_text = ref_text if ref_text is not None else config.REF_TEXT
-    language = language or config.LANGUAGE
-    instruct = instruct if instruct is not None else config.INSTRUCT
-
-    model = load_model()
+    """Synthesize `text` in the cloned reference voice and stream to the speaker."""
     play = StreamPlayer()
     try:
-        for audio_chunk, sr, _ in model.generate_voice_clone_streaming(
-            text=text, language="English",
-            ref_audio=ref_audio, ref_text=ref_text,
-            chunk_size=8,
+        for chunk, sr in synthesize_stream(
+            text, language=language, ref_audio=ref_audio, ref_text=ref_text,
+            instruct=instruct, expressive=expressive,
         ):
-            play(audio_chunk, sr)
+            play(chunk, sr)
     finally:
         play.close()
 
