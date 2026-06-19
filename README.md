@@ -40,12 +40,24 @@ Installs faster-whisper (STT), Silero VAD (utterance detection), and sounddevice
 uv sync --extra realtime
 ```
 
-**GUI** (recommended) — pick mic/output, toggle the virtual mic, Start/Stop,
-watch the live transcript:
+**GUI** (recommended):
 
 ```bash
 uv run python -m src.gui
 ```
+
+From the GUI you can choose, without touching `config.py`:
+
+- **Devices** — microphone and output (or Auto / PulseAudio).
+- **Voice sample** — pick any clip in `assets/` (or **Browse…** for your own),
+  edit its **reference text** (pre-filled for the bundled voices, remembered
+  per-clip), or **Auto-transcribe** it with Whisper.
+- **Generation** — TTS model (0.6B/1.7B), language, and the `instruct` style prompt.
+- **Speech-to-text** — Whisper model size and the end-of-speech silence threshold.
+- **Routing** — the virtual mic and echo-guard toggles.
+
+Settings persist to `.gui_settings.json` and are restored next launch. Changes
+apply when you press **Start** (switching the TTS model triggers a reload).
 
 **Console** loop (no GUI):
 
@@ -89,15 +101,30 @@ export AUDIO_INPUT_DEVICE=7        # e.g. a specific USB mic
 
 ## Steering delivery with an instruction prompt
 
-`config.INSTRUCT` is a natural-language style prompt that steers *how* text is
-delivered (tone/emotion/pacing), independent of the words. It's passed straight
-to `generate_voice_clone`. Set it in the GUI's "Instruct" field, via the env
-var, or empty to disable:
+`config.INSTRUCT` is a natural-language style prompt (tone/emotion/pacing) that
+is passed to `generate_voice_clone` as `instruct`. Set it in the GUI's
+"Instruct" field, via the env var, or empty to disable:
 
 ```bash
 export INSTRUCT="Speak slowly, in a calm, warm tone."
 export INSTRUCT=""                 # disable
 ```
+
+> ⚠️ **Instruct + voice cloning is experimental and unreliable.** The instruct
+> embeddings *are* injected into the clone path (so it's not a no-op), but the
+> base Qwen3-TTS checkpoint is **not trained to follow instructions while
+> cloning** — `faster-qwen3-tts` itself warns about this. Expect the cloned
+> identity to dominate and the style instruction to be weakly followed (or
+> ignored), especially on the 0.6B model. Instruction following is a
+> first-class feature only on the separate checkpoints:
+>
+> - **VoiceDesign** (`*-VoiceDesign`) — instruction-driven, *no* reference clip.
+> - **CustomVoice** (`*-CustomVoice`, 1.7B) — named preset speakers + instruct
+>   (instruct is disabled on the 0.6B CustomVoice). Note this uses *named
+>   speakers*, not an embedding extracted from your reference audio.
+>
+> There is no reliable "cloned voice + instruction style" mode in this stack —
+> pick cloned identity (this repo) **or** instruction control (VoiceDesign).
 
 ## FlashAttention 2 (optional, faster inference)
 

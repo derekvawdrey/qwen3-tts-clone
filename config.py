@@ -62,10 +62,6 @@ REF_TEXT = os.environ.get(
     "China is going to eat our lunch? Come on, man. They can't even figure out how to deal with the fact that they have this great division between the China Sea and the mountains in the east, I mean, in the west. "
 )
 
-
-
-
-
 # --- Model -----------------------------------------------------------------
 # The *-Base checkpoint is the one that supports zero-shot voice cloning.
 MODEL_ID = os.environ.get("MODEL_ID", "Qwen/Qwen3-TTS-12Hz-0.6B-Base")

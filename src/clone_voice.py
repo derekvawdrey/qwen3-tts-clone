@@ -16,6 +16,18 @@ import config  # noqa: E402
 
 _DTYPES = {"bfloat16": "bfloat16", "float16": "float16", "float32": "float32"}
 
+# Experimental "expressive clone": clone identity + instruction style together.
+# The base clone checkpoint ignores instructions, so we extract the speaker
+# x-vector with the Base model and synthesize on the CustomVoice model (which is
+# trained to follow instructions), feeding the embedding as the speaker.
+EXPRESSIVE_TTS_MODEL = "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"
+EXPRESSIVE_EMBED_MODEL = "Qwen/Qwen3-TTS-12Hz-1.7B-Base"
+
+
+def _torch_dtype():
+    import torch
+    return getattr(torch, _DTYPES.get(config.DTYPE, "bfloat16"))
+
 
 def ensure_reference_wav() -> Path:
     """Make sure the prepped mono WAV exists; build it from the MP3 if missing."""
@@ -79,9 +91,15 @@ def clone_to_file(
 ) -> Path:
     """Synthesize `text` in the cloned reference voice and write a WAV.
 
-    `instruct` is a natural-language style prompt steering *how* the text is
-    delivered (tone/emotion/pacing). Defaults to ``config.INSTRUCT``; pass an
+    `instruct` is a natural-language style prompt (tone/emotion/pacing), passed
+    through to `generate_voice_clone`. Defaults to ``config.INSTRUCT``; pass an
     empty string to disable.
+
+    NOTE: instruct + voice cloning is experimental and unreliable — the base
+    Qwen3-TTS checkpoint is not trained to follow instructions while cloning, so
+    the style prompt is often weakly followed or ignored (faster-qwen3-tts warns
+    about this). Reliable instruction control lives in the separate VoiceDesign
+    (no clone) / CustomVoice (named speakers, 1.7B) checkpoints.
 
     Returns the path to the written file.
     """
