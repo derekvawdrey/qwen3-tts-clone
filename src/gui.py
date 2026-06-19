@@ -118,10 +118,13 @@ class App:
         self.language_var = tk.StringVar(value=config.LANGUAGE)
         ttk.Combobox(gen, textvariable=self.language_var, values=LANGUAGES) \
             .grid(row=1, column=1, columnspan=2, sticky="ew", **pad)
+        self.language_var.trace_add("write", self._on_language_change)
         ttk.Label(gen, text="Instruct:").grid(row=2, column=0, sticky="w", **pad)
         self.instruct_var = tk.StringVar(value=config.INSTRUCT)
         ttk.Entry(gen, textvariable=self.instruct_var) \
             .grid(row=2, column=1, columnspan=2, sticky="ew", **pad)
+        # Live-apply to a running pipeline (takes effect on the next utterance).
+        self.instruct_var.trace_add("write", self._on_instruct_change)
         self.expressive_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(
             gen, variable=self.expressive_var,
@@ -281,6 +284,14 @@ class App:
     def _on_vmic_toggle(self):
         # Virtual mic / headphones have no acoustic echo path → guard off by default.
         self.duplex_var.set(not self.vmic_var.get())
+
+    def _on_instruct_change(self, *_):
+        if self.pipeline and self.pipeline.running:
+            self.pipeline.set_instruct(self.instruct_var.get())
+
+    def _on_language_change(self, *_):
+        if self.pipeline and self.pipeline.running:
+            self.pipeline.set_language(self.language_var.get())
 
     def _start(self):
         if self.pipeline and self.pipeline.running:

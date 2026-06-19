@@ -10,3 +10,5 @@ assets/ref_text.txt
 .cache/
 # GUI settings persisted at runtime
 .gui_settings.json
+# cached speaker embeddings for expressive-clone mode
+*.spk.pt

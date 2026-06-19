@@ -284,10 +284,23 @@ class Pipeline:
         self.speaking = threading.Event()
         self.stop_evt = threading.Event()
         self._threads: list[threading.Thread] = []
+        self._speaker: Speaker | None = None
 
     @property
     def running(self) -> bool:
         return bool(self._threads)
+
+    def set_instruct(self, value):
+        """Live-update the style prompt; takes effect on the next utterance."""
+        self.instruct = value
+        if self._speaker is not None:
+            self._speaker.instruct = value
+
+    def set_language(self, value):
+        """Live-update the language; takes effect on the next utterance."""
+        self.language = value
+        if self._speaker is not None:
+            self._speaker.language = value or config.LANGUAGE
 
     def start(self):
         if self._threads:
@@ -300,6 +313,7 @@ class Pipeline:
         transcriber = Transcriber(self.audio_q, self.text_q, self.speaking,
                                   self.stop_evt, self.events_q, self.half_duplex)
         mic = MicSource(self.audio_q, self.stop_evt, self.input_device, self.events_q)
+        self._speaker = speaker
         self._threads = [speaker, transcriber, mic]
         # Load-heavy stages first so the mic isn't filling a full queue for long.
         for t in self._threads:
@@ -314,6 +328,7 @@ class Pipeline:
         for t in self._threads:
             t.join(timeout=5)
         self._threads = []
+        self._speaker = None
         _emit(self.events_q, "status", value="stopped")
 
 
