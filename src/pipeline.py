@@ -8,14 +8,16 @@ Three threads connected by queues (the "bus"):
                                                            -> StreamPlayer
 
 Runs **half-duplex**: the mic is gated (`speaking` event) while the TTS is
-talking, so the model never transcribes its own output. Press Ctrl+C to stop.
+talking, so the model never transcribes its own output.
+
+Use the `Pipeline` class for programmatic control (the GUI does this), or run
+the module for a console loop:
 
     python -m src.pipeline
 """
 from __future__ import annotations
 
 import collections
-import os
 import queue
 import sys
 import threading
@@ -33,8 +35,19 @@ VAD_FRAME = 512        # samples per Silero frame at 16 kHz (~32 ms)
 PREROLL_FRAMES = 8     # ~256 ms of audio kept before speech onset (avoid clipping)
 
 
-def _resolve_input_device(sd):
-    """Pick a mic device: explicit env override, else PulseAudio, else default."""
+def _emit(events_q, type_, **kw):
+    """Push a UI event onto an optional queue (dropped if full/absent)."""
+    if events_q is not None:
+        try:
+            events_q.put_nowait({"type": type_, **kw})
+        except queue.Full:
+            pass
+
+
+def _resolve_input_device(sd, device):
+    """Pick a mic device: explicit choice, else env, else PulseAudio, else default."""
+    if device is not None:
+        return device
     env = config.MIC_DEVICE
     if env:
         return int(env) if str(env).isdigit() else env
@@ -50,39 +63,47 @@ def _resolve_input_device(sd):
 class MicSource(threading.Thread):
     """Capture 16 kHz mono frames and push them onto audio_q (drops on overflow)."""
 
-    def __init__(self, audio_q: queue.Queue, stop_evt: threading.Event):
+    def __init__(self, audio_q, stop_evt, device=None, events_q=None):
         super().__init__(name="MicSource", daemon=True)
         self.audio_q = audio_q
         self.stop_evt = stop_evt
+        self.device = device
+        self.events_q = events_q
 
     def run(self):
         import sounddevice as sd
 
-        device = _resolve_input_device(sd)
-        print(f"[mic] capturing from device={device!r} @ {MIC_RATE} Hz")
+        device = _resolve_input_device(sd, self.device)
 
         def callback(indata, frames, time_info, status):  # runs in PortAudio thread
             try:
                 self.audio_q.put_nowait(indata[:, 0].copy())
             except queue.Full:
-                pass  # consumer is behind (e.g. loading models) — drop, don't block audio
+                pass  # consumer is behind (e.g. loading models) — drop, don't block
 
-        with sd.InputStream(
-            samplerate=MIC_RATE, blocksize=VAD_FRAME, channels=1,
-            dtype="float32", device=device, callback=callback,
-        ):
-            self.stop_evt.wait()
+        try:
+            with sd.InputStream(
+                samplerate=MIC_RATE, blocksize=VAD_FRAME, channels=1,
+                dtype="float32", device=device, callback=callback,
+            ):
+                _emit(self.events_q, "info", text=f"mic: capturing from {device!r}")
+                self.stop_evt.wait()
+        except Exception as exc:
+            _emit(self.events_q, "error", text=f"mic failed: {exc}")
 
 
 class Transcriber(threading.Thread):
     """VAD-segment the mic stream and transcribe each utterance to text_q."""
 
-    def __init__(self, audio_q, text_q, speaking_evt, stop_evt):
+    def __init__(self, audio_q, text_q, speaking_evt, stop_evt, events_q=None,
+                 half_duplex=True):
         super().__init__(name="Transcriber", daemon=True)
         self.audio_q = audio_q
         self.text_q = text_q
         self.speaking_evt = speaking_evt
         self.stop_evt = stop_evt
+        self.events_q = events_q
+        self.half_duplex = half_duplex
 
     def run(self):
         import torch
@@ -90,19 +111,24 @@ class Transcriber(threading.Thread):
         from silero_vad import VADIterator, load_silero_vad
 
         device, index = _parse_cuda(config.DEVICE)
-        print(f"[stt] loading faster-whisper '{config.STT_MODEL}' "
-              f"({config.STT_COMPUTE}) on {config.DEVICE} ...")
-        asr = WhisperModel(
-            config.STT_MODEL, device=device, device_index=index,
-            compute_type=config.STT_COMPUTE,
-        )
-        vad = VADIterator(
-            load_silero_vad(), sampling_rate=MIC_RATE,
-            min_silence_duration_ms=config.VAD_SILENCE_MS,
-        )
-        print("[stt] ready")
+        _emit(self.events_q, "info",
+              text=f"loading STT '{config.STT_MODEL}' ({config.STT_COMPUTE})…")
+        try:
+            asr = WhisperModel(
+                config.STT_MODEL, device=device, device_index=index,
+                compute_type=config.STT_COMPUTE,
+            )
+            vad = VADIterator(
+                load_silero_vad(), sampling_rate=MIC_RATE,
+                min_silence_duration_ms=config.VAD_SILENCE_MS,
+            )
+        except Exception as exc:
+            _emit(self.events_q, "error", text=f"STT load failed: {exc}")
+            return
+        _emit(self.events_q, "info", text="STT ready")
+        _emit(self.events_q, "status", value="listening")
 
-        preroll: collections.deque = collections.deque(maxlen=PREROLL_FRAMES)
+        preroll = collections.deque(maxlen=PREROLL_FRAMES)
         collecting = False
         buf: list[np.ndarray] = []
 
@@ -112,12 +138,14 @@ class Transcriber(threading.Thread):
             except queue.Empty:
                 continue
 
-            # Half-duplex: ignore the mic (and reset VAD) while the bot speaks.
-            if self.speaking_evt.is_set():
+            # Half-duplex: ignore the mic (and reset VAD) while the bot speaks,
+            # to avoid transcribing TTS that leaks back in through the speakers.
+            # Skipped when full-duplex (virtual mic / headphones) so you can
+            # barge in while the cloned voice is still talking.
+            if self.half_duplex and self.speaking_evt.is_set():
                 if collecting or preroll:
                     vad.reset_states()
-                    collecting = False
-                    buf = []
+                    collecting, buf = False, []
                     preroll.clear()
                 continue
 
@@ -136,32 +164,42 @@ class Transcriber(threading.Thread):
 
     def _transcribe(self, asr, audio: np.ndarray):
         segments, _ = asr.transcribe(
-            audio, language="en", beam_size=1,
-            condition_on_previous_text=False,
+            audio, language="en", beam_size=1, condition_on_previous_text=False,
         )
         text = " ".join(s.text.strip() for s in segments).strip()
         if text:
+            _emit(self.events_q, "user", text=text)
             try:
                 self.text_q.put_nowait(text)
             except queue.Full:
-                pass  # speaker is busy; drop this utterance rather than queue up
+                pass  # speaker is busy; drop rather than build a backlog
 
 
 class Speaker(threading.Thread):
     """Speak each text from text_q in the cloned voice, gating the mic meanwhile."""
 
-    def __init__(self, text_q, audio_q, speaking_evt, stop_evt):
+    def __init__(self, text_q, audio_q, speaking_evt, stop_evt,
+                 output_device=None, instruct=None, events_q=None, half_duplex=True):
         super().__init__(name="Speaker", daemon=True)
         self.text_q = text_q
         self.audio_q = audio_q
         self.speaking_evt = speaking_evt
         self.stop_evt = stop_evt
+        self.output_device = output_device
+        # None => fall back to config default; "" => explicitly disabled
+        self.instruct = config.INSTRUCT if instruct is None else instruct
+        self.events_q = events_q
+        self.half_duplex = half_duplex
 
     def run(self):
-        print("[tts] loading Qwen3-TTS ...")
-        model = load_model()
-        ref_audio = str(ensure_reference_wav())
-        print("[tts] ready")
+        _emit(self.events_q, "info", text="loading Qwen3-TTS…")
+        try:
+            model = load_model()
+            ref_audio = str(ensure_reference_wav())
+        except Exception as exc:
+            _emit(self.events_q, "error", text=f"TTS load failed: {exc}")
+            return
+        _emit(self.events_q, "info", text="TTS ready")
 
         while not self.stop_evt.is_set():
             try:
@@ -171,25 +209,29 @@ class Speaker(threading.Thread):
             if text is None:
                 break
 
-            print(f"\n[you] {text}")
             self.speaking_evt.set()
-            player = StreamPlayer()
+            _emit(self.events_q, "status", value="speaking")
+            player = StreamPlayer(device=self.output_device)
             try:
                 for chunk, sr, _timing in model.generate_voice_clone_streaming(
                     text=text,
                     language=config.LANGUAGE,
                     ref_audio=ref_audio,
                     ref_text=config.REF_TEXT,
-                    instruct=config.INSTRUCT or None,
+                    instruct=self.instruct or None,
                     chunk_size=8,
                 ):
                     player(chunk, sr)
-            except Exception as exc:  # don't let one bad utterance kill the loop
-                print(f"[tts] generation failed: {exc}", file=sys.stderr)
+            except Exception as exc:  # one bad utterance shouldn't kill the loop
+                _emit(self.events_q, "error", text=f"generation failed: {exc}")
             finally:
                 player.close()
-                self._flush_mic()
+                # In half-duplex, drop the echo tail captured during playback.
+                # In full-duplex, keep it — it may be the user barging in.
+                if self.half_duplex:
+                    self._flush_mic()
                 self.speaking_evt.clear()
+                _emit(self.events_q, "status", value="listening")
 
     def _flush_mic(self):
         """Discard mic frames captured during playback (residual echo tail)."""
@@ -208,36 +250,76 @@ def _parse_cuda(device: str):
     return device, 0
 
 
-def main() -> int:
-    audio_q: queue.Queue = queue.Queue(maxsize=200)  # ~6 s buffer @ 32 ms frames
-    text_q: queue.Queue = queue.Queue(maxsize=4)
-    speaking = threading.Event()
-    stop = threading.Event()
+class Pipeline:
+    """Controllable mic->STT->TTS loop. Start/stop and observe via events_q."""
 
-    speaker = Speaker(text_q, audio_q, speaking, stop)
-    transcriber = Transcriber(audio_q, text_q, speaking, stop)
-    mic = MicSource(audio_q, stop)
+    def __init__(self, input_device=None, output_device=None, instruct=None,
+                 events_q=None, half_duplex=True):
+        self.input_device = input_device
+        self.output_device = output_device
+        self.instruct = instruct
+        self.events_q = events_q
+        self.half_duplex = half_duplex
+        self.audio_q = queue.Queue(maxsize=200)   # ~6 s @ 32 ms frames
+        self.text_q = queue.Queue(maxsize=4)
+        self.speaking = threading.Event()
+        self.stop_evt = threading.Event()
+        self._threads: list[threading.Thread] = []
 
-    # Start the model-loading stages first so the mic isn't capturing into a
-    # full queue for long; overflow is dropped anyway.
-    speaker.start()
-    transcriber.start()
-    mic.start()
+    @property
+    def running(self) -> bool:
+        return bool(self._threads)
 
-    print("\nListening — speak into the mic. Ctrl+C to stop.\n")
-    try:
-        while not stop.is_set():
-            stop.wait(0.5)
-    except KeyboardInterrupt:
-        print("\nStopping ...")
-    finally:
-        stop.set()
+    def start(self):
+        if self._threads:
+            return
+        _emit(self.events_q, "status", value="loading")
+        speaker = Speaker(self.text_q, self.audio_q, self.speaking, self.stop_evt,
+                          self.output_device, self.instruct, self.events_q,
+                          self.half_duplex)
+        transcriber = Transcriber(self.audio_q, self.text_q, self.speaking,
+                                  self.stop_evt, self.events_q, self.half_duplex)
+        mic = MicSource(self.audio_q, self.stop_evt, self.input_device, self.events_q)
+        self._threads = [speaker, transcriber, mic]
+        # Load-heavy stages first so the mic isn't filling a full queue for long.
+        for t in self._threads:
+            t.start()
+
+    def stop(self):
+        self.stop_evt.set()
         try:
-            text_q.put_nowait(None)
+            self.text_q.put_nowait(None)
         except queue.Full:
             pass
-        for t in (mic, transcriber, speaker):
+        for t in self._threads:
             t.join(timeout=5)
+        self._threads = []
+        _emit(self.events_q, "status", value="stopped")
+
+
+def main() -> int:
+    events_q: queue.Queue = queue.Queue()
+    pipe = Pipeline(events_q=events_q)
+    pipe.start()
+    print("\nListening — speak into the mic. Ctrl+C to stop.\n")
+    try:
+        while True:
+            try:
+                ev = events_q.get(timeout=0.5)
+            except queue.Empty:
+                continue
+            if ev["type"] == "user":
+                print(f"[you] {ev['text']}")
+            elif ev["type"] == "status":
+                print(f"[status] {ev['value']}")
+            elif ev["type"] == "error":
+                print(f"[error] {ev['text']}", file=sys.stderr)
+            else:
+                print(f"[info] {ev['text']}")
+    except KeyboardInterrupt:
+        print("\nStopping …")
+    finally:
+        pipe.stop()
     return 0
 
 

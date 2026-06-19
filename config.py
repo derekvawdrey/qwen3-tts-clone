@@ -55,12 +55,12 @@ REF_TEXT = os.environ.get(
 # )
 
 # Joe Biden
-# REF_AUDIO_MP3 = Path(os.environ.get("REF_AUDIO_MP3", ASSETS_DIR / "china-is-going-to-eat-our-lunch-come-on-man-they-can-t-even-figure-out-how-to-deal-with-the-fact-that-they-have-this-gre.mp3"))
-# REF_AUDIO_WAV = Path(os.environ.get("REF_AUDIO_WAV", ASSETS_DIR / "china-is-going-to-eat-our-lunch-come-on-man-they-can-t-even-figure-out-how-to-deal-with-the-fact-that-they-have-this-gre.wav"))
-# REF_TEXT = os.environ.get(
-#     "REF_TEXT",
-#     "China is going to eat our lunch? Come on, man. They can't even figure out how to deal with the fact that they have this great division between the China Sea and the mountains in the east, I mean, in the west. "
-# )
+REF_AUDIO_MP3 = Path(os.environ.get("REF_AUDIO_MP3", ASSETS_DIR / "china-is-going-to-eat-our-lunch-come-on-man-they-can-t-even-figure-out-how-to-deal-with-the-fact-that-they-have-this-gre.mp3"))
+REF_AUDIO_WAV = Path(os.environ.get("REF_AUDIO_WAV", ASSETS_DIR / "china-is-going-to-eat-our-lunch-come-on-man-they-can-t-even-figure-out-how-to-deal-with-the-fact-that-they-have-this-gre.wav"))
+REF_TEXT = os.environ.get(
+    "REF_TEXT",
+    "China is going to eat our lunch? Come on, man. They can't even figure out how to deal with the fact that they have this great division between the China Sea and the mountains in the east, I mean, in the west. "
+)
 
 
 
