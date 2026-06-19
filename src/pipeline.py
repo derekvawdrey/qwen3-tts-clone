@@ -21,6 +21,7 @@ import collections
 import queue
 import sys
 import threading
+import time
 from pathlib import Path
 
 import numpy as np
@@ -250,16 +251,34 @@ class Speaker(threading.Thread):
             self.speaking_evt.set()
             _emit(self.events_q, "status", value="speaking")
             player = StreamPlayer(device=self.output_device)
+            # Length-aware watchdog: a glitched utterance can run away (loop/
+            # repeat), so cap both produced audio and wall-clock relative to the
+            # input. Because synthesize_stream is a lazy generator, breaking the
+            # loop (and closing it) stops the underlying generation.
+            max_audio_sec, max_wall_sec = self._gen_budget(text)
+            stream = synthesize_stream(
+                text, language=self.language, ref_audio=ref_wav,
+                ref_text=self.ref_text, instruct=self.instruct,
+                expressive=self.expressive, icl=self.icl,
+            )
+            produced = 0
+            t0 = time.monotonic()
             try:
-                for chunk, sr in synthesize_stream(
-                    text, language=self.language, ref_audio=ref_wav,
-                    ref_text=self.ref_text, instruct=self.instruct,
-                    expressive=self.expressive, icl=self.icl,
-                ):
+                for chunk, sr in stream:
                     player(chunk, sr)
+                    produced += len(chunk)
+                    over_audio = produced / sr > max_audio_sec
+                    over_wall = time.monotonic() - t0 > max_wall_sec
+                    if over_audio or over_wall:
+                        why = "ran away" if over_audio else "stalled"
+                        _emit(self.events_q, "error",
+                              text=f"generation {why} (>{max_audio_sec:.0f}s audio / "
+                                   f"{max_wall_sec:.0f}s) — skipping to next")
+                        break
             except Exception as exc:  # one bad utterance shouldn't kill the loop
                 _emit(self.events_q, "error", text=f"generation failed: {exc}")
             finally:
+                stream.close()  # tear down the generator (stops generation if mid-stream)
                 player.close()
                 # In half-duplex, drop the echo tail captured during playback.
                 # In full-duplex, keep it — it may be the user barging in.
@@ -267,6 +286,20 @@ class Speaker(threading.Thread):
                     self._flush_mic()
                 self.speaking_evt.clear()
                 _emit(self.events_q, "status", value="listening")
+
+    @staticmethod
+    def _gen_budget(text: str) -> tuple[float, float]:
+        """Per-utterance (max_audio_sec, max_wall_sec) scaled to the input length.
+
+        Estimates how long the text *should* take to speak, then allows a generous
+        multiple before declaring the generation glitched. Longer inputs get
+        proportionally larger budgets; both are configurable in config.py.
+        """
+        words = max(1, len(text.split()))
+        expected = words / max(config.SPEECH_WORDS_PER_SEC, 0.1)
+        max_audio = config.GEN_MAX_AUDIO_FLOOR + config.GEN_MAX_AUDIO_FACTOR * expected
+        max_wall = config.GEN_TIMEOUT_FLOOR + config.GEN_TIMEOUT_FACTOR * expected
+        return max_audio, max_wall
 
     def _flush_mic(self):
         """Discard mic frames captured during playback (residual echo tail)."""

@@ -83,6 +83,20 @@ INSTRUCT = os.environ.get(
 )
 SAMPLE_RATE = int(os.environ.get("REF_SAMPLE_RATE", "24000"))  # target sr for the prepped WAV
 
+# --- Generation watchdog ---------------------------------------------------
+# The model occasionally glitches and runs away (loops/repeats), producing far
+# more audio — or taking far longer — than the input warrants. The Speaker
+# aborts such an utterance and moves to the next queued item. Both budgets scale
+# with the estimated speech duration of the input text (length-aware), so short
+# inputs get short budgets and long inputs get proportionally longer ones.
+SPEECH_WORDS_PER_SEC = float(os.environ.get("SPEECH_WORDS_PER_SEC", "2.6"))  # ~speaking rate
+# Abort if produced audio exceeds FLOOR + FACTOR * expected_audio_seconds.
+GEN_MAX_AUDIO_FACTOR = float(os.environ.get("GEN_MAX_AUDIO_FACTOR", "3.0"))
+GEN_MAX_AUDIO_FLOOR = float(os.environ.get("GEN_MAX_AUDIO_FLOOR", "3.0"))    # seconds
+# Wall-clock backstop (e.g. a hard stall): FLOOR + FACTOR * expected_audio_seconds.
+GEN_TIMEOUT_FACTOR = float(os.environ.get("GEN_TIMEOUT_FACTOR", "6.0"))
+GEN_TIMEOUT_FLOOR = float(os.environ.get("GEN_TIMEOUT_FLOOR", "5.0"))        # seconds
+
 # --- Realtime speech-to-speech pipeline (src/pipeline.py) ------------------
 # faster-whisper model + compute type for the STT stage.
 STT_MODEL = os.environ.get("STT_MODEL", "base.en")
