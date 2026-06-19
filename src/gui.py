@@ -293,8 +293,10 @@ class App(QMainWindow):
         self.log = QTextEdit()
         self.log.setObjectName("Log")
         self.log.setReadOnly(True)
-        self.log.setMinimumHeight(70)   # flexible: shrinks on small windows
-        self.log.setMaximumHeight(220)
+        # Compact + fixed-policy so it never steals space from the scrolling
+        # settings area (which is the flexible region that scrolls when needed).
+        self.log.setFixedHeight(110)
+        self.log.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         root.addWidget(self.log)
 
         # Message box
@@ -591,7 +593,9 @@ class App(QMainWindow):
         self._set_status("applying")
 
         def worker():
-            self._teardown()
+            # Keep the virtual mic up across the restart so other apps (Discord,
+            # Zoom…) don't see the device vanish and fall back to another mic.
+            self._teardown(stop_vmic=False)
             self.events_q.put({"type": "_relaunch", "cfg": cfg})
 
         threading.Thread(target=worker, daemon=True).start()
@@ -607,8 +611,9 @@ class App(QMainWindow):
 
         output_device = cfg["output_device"]
         if cfg["vmic"]:
+            was_active = self.vmic.active
             try:
-                sink = self.vmic.create()
+                sink = self.vmic.create()  # idempotent: reuses existing modules
             except Exception as exc:  # noqa: BLE001
                 self._log(f"virtual mic failed: {exc}", C_RED)
                 self.apply_btn.setEnabled(True)
@@ -616,8 +621,12 @@ class App(QMainWindow):
                 return
             os.environ["PULSE_SINK"] = sink
             output_device = "pulse"
-            self._log(f"virtual mic '{self.vmic.source_name}' active — select it as "
-                      "the microphone in your other app", C_FG_MUTED)
+            if not was_active:  # only announce when newly created, not on restart
+                self._log(f"virtual mic '{self.vmic.source_name}' active — select it as "
+                          "the microphone in your other app", C_FG_MUTED)
+        elif self.vmic.active:  # vmic was turned off → tear it down now
+            self.vmic.destroy()
+            os.environ.pop("PULSE_SINK", None)
         else:
             os.environ.pop("PULSE_SINK", None)
 
@@ -645,13 +654,15 @@ class App(QMainWindow):
 
         threading.Thread(target=worker, daemon=True).start()
 
-    def _teardown(self):
+    def _teardown(self, stop_vmic: bool = True):
         if self.pipeline:
             self.pipeline.stop()
             self.pipeline = None
-        if self.vmic.active:
+        # On an Apply restart we keep the virtual mic alive (stop_vmic=False) so
+        # downstream apps stay bound to it; Stop/close tear it down fully.
+        if stop_vmic and self.vmic.active:
             self.vmic.destroy()
-        os.environ.pop("PULSE_SINK", None)
+            os.environ.pop("PULSE_SINK", None)
 
     # ---- events / log ----------------------------------------------------
     def _poll_events(self):
