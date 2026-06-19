@@ -5,7 +5,7 @@ and clones a voice from a reference clip using zero-shot voice cloning. Inferenc
 runs on the CUDA-graph-accelerated
 [faster-qwen3-tts](https://github.com/andimarafioti/faster-qwen3-tts) runtime
 (~5× faster, with streaming), and there's an optional realtime
-**speech-to-speech** loop (mic → speech-to-text → cloned voice) with a Tkinter
+**speech-to-speech** loop (mic → speech-to-text → cloned voice) with a
 GUI and a Linux **virtual microphone** so the cloned voice can be used as an
 input device in other apps (Zoom, Discord, OBS, the browser …).
 
