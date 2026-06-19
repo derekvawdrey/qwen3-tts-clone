@@ -71,7 +71,10 @@ class App:
     def __init__(self, root: tk.Tk):
         self.root = root
         root.title("Qwen3-TTS Voice")
-        root.minsize(620, 720)
+        root.minsize(560, 420)
+        # Open at a height that fits the screen; content scrolls if taller.
+        h = min(880, max(480, root.winfo_screenheight() - 120))
+        root.geometry(f"640x{h}")
 
         self.events_q: queue.Queue = queue.Queue()
         self.pipeline: Pipeline | None = None
@@ -144,11 +147,39 @@ class App:
                         foreground=C_FG_MUTED, padding=4)
 
     # ---- layout ----------------------------------------------------------
+    def _build_scroll_area(self):
+        """A vertically scrollable container; returns the inner frame for content."""
+        outer = ttk.Frame(self.root)
+        outer.pack(side="top", fill="both", expand=True)
+        canvas = tk.Canvas(outer, bg=C_BG, highlightthickness=0, borderwidth=0)
+        vsb = ttk.Scrollbar(outer, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=vsb.set)
+        vsb.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+
+        inner = ttk.Frame(canvas)
+        win = canvas.create_window((0, 0), window=inner, anchor="nw")
+        inner.bind("<Configure>",
+                   lambda _e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.bind("<Configure>",
+                    lambda e: canvas.itemconfigure(win, width=e.width))
+
+        def _wheel(e):
+            delta = -1 if getattr(e, "num", None) == 4 else 1 if getattr(e, "num", None) == 5 \
+                else int(-e.delta / 120) if e.delta else 0
+            canvas.yview_scroll(delta, "units")
+
+        canvas.bind_all("<MouseWheel>", _wheel)   # Windows / macOS
+        canvas.bind_all("<Button-4>", _wheel)     # Linux scroll up
+        canvas.bind_all("<Button-5>", _wheel)     # Linux scroll down
+        return inner
+
     def _build_widgets(self):
         pad = {"padx": 6, "pady": 3}
+        sec = self._build_scroll_area()  # settings sections go here (scrollable)
 
         # --- Devices ---
-        dev = ttk.LabelFrame(self.root, text="Devices")
+        dev = ttk.LabelFrame(sec, text="Devices")
         dev.pack(fill="x", padx=8, pady=4)
         dev.columnconfigure(1, weight=1)
         ttk.Label(dev, text="Microphone:").grid(row=0, column=0, sticky="w", **pad)
@@ -161,7 +192,7 @@ class App:
             .grid(row=0, column=2, rowspan=2, sticky="ns", **pad)
 
         # --- Voice sample ---
-        voice = ttk.LabelFrame(self.root, text="Voice sample")
+        voice = ttk.LabelFrame(sec, text="Voice sample")
         voice.pack(fill="x", padx=8, pady=4)
         voice.columnconfigure(1, weight=1)
         ttk.Label(voice, text="Clip:").grid(row=0, column=0, sticky="w", **pad)
@@ -180,7 +211,7 @@ class App:
             .grid(row=1, column=2, sticky="n", **pad)
 
         # --- Generation ---
-        gen = ttk.LabelFrame(self.root, text="Generation")
+        gen = ttk.LabelFrame(sec, text="Generation")
         gen.pack(fill="x", padx=8, pady=4)
         gen.columnconfigure(1, weight=1)
         ttk.Label(gen, text="TTS model:").grid(row=0, column=0, sticky="w", **pad)
@@ -204,9 +235,15 @@ class App:
             text="Experimental: expressive clone — follow Instruct "
                  "(1.7B CustomVoice; ignores TTS-model choice)",
         ).grid(row=3, column=0, columnspan=3, sticky="w", **pad)
+        self.icl_var = tk.BooleanVar(value=True)  # recommended
+        ttk.Checkbutton(
+            gen, variable=self.icl_var,
+            text="      ↳ ICL mode (uses reference audio + text; stronger "
+                 "instruction-following · needs accurate Reference text)",
+        ).grid(row=4, column=0, columnspan=3, sticky="w", **pad)
 
         # --- Speech-to-text ---
-        stt = ttk.LabelFrame(self.root, text="Speech-to-text")
+        stt = ttk.LabelFrame(sec, text="Speech-to-text")
         stt.pack(fill="x", padx=8, pady=4)
         stt.columnconfigure(1, weight=1)
         ttk.Label(stt, text="STT model:").grid(row=0, column=0, sticky="w", **pad)
@@ -220,7 +257,7 @@ class App:
                     textvariable=self.vad_var).grid(row=1, column=1, sticky="w", **pad)
 
         # --- Routing ---
-        route = ttk.LabelFrame(self.root, text="Routing")
+        route = ttk.LabelFrame(sec, text="Routing")
         route.pack(fill="x", padx=8, pady=4)
         self.vmic_var = tk.BooleanVar(value=VirtualMic.available())
         vmic_chk = ttk.Checkbutton(
@@ -251,10 +288,10 @@ class App:
             .pack(side="right")
 
         self.log = tk.Text(
-            self.root, height=10, wrap="word", state="disabled", bg=C_BG_INPUT,
+            self.root, height=8, wrap="word", state="disabled", bg=C_BG_INPUT,
             fg=C_FG, relief="flat", highlightthickness=1, highlightbackground=C_BORDER,
             padx=8, pady=6, insertbackground=C_FG)
-        self.log.pack(fill="both", expand=True, padx=8, pady=(0, 4))
+        self.log.pack(side="top", fill="x", padx=8, pady=(0, 4))
         self.log.tag_configure("you", foreground=C_GREEN)
         self.log.tag_configure("typed", foreground="#00a8fc")
         self.log.tag_configure("err", foreground=C_RED)
@@ -442,6 +479,7 @@ class App:
             instruct=self.instruct_var.get(),
             language=self.language_var.get(),
             expressive=self.expressive_var.get(),
+            icl=self.icl_var.get(),
             vmic=self.vmic_var.get(),
             duplex=self.duplex_var.get(),
         )
@@ -503,7 +541,7 @@ class App:
             cfg["input_device"], output_device, cfg["instruct"], self.events_q,
             half_duplex=cfg["duplex"], ref_audio=cfg["voice_path"],
             ref_text=cfg["ref_text"] or None, language=cfg["language"] or None,
-            expressive=cfg["expressive"])
+            expressive=cfg["expressive"], icl=cfg["icl"])
         self.pipeline.start()
         self.apply_btn.configure(state="normal")  # re-apply anytime to restart
         self.stop_btn.configure(state="normal")
@@ -579,6 +617,7 @@ class App:
             "vmic": self.vmic_var.get(),
             "duplex": self.duplex_var.get(),
             "expressive": self.expressive_var.get(),
+            "icl": self.icl_var.get(),
             "ref_texts": self.ref_texts,
         }
         try:
@@ -610,6 +649,8 @@ class App:
             self.duplex_var.set(s["duplex"])
         if "expressive" in s:
             self.expressive_var.set(s["expressive"])
+        if "icl" in s:
+            self.icl_var.set(s["icl"])
 
     def _on_close(self):
         try:

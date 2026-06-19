@@ -31,42 +31,28 @@ def main() -> int:
     ref_text = config.REF_TEXT
     print(f"ref: {ref_wav}\nref_text: {ref_text[:60]}…\n")
 
+    # ICL must be built by the Base model (CustomVoice can't build clone prompts),
+    # then fed to the CustomVoice model for instruction-following synthesis.
+    base = FasterQwen3TTS.from_pretrained(
+        BASE, device=config.DEVICE, dtype=_torch_dtype(),
+        attn_implementation=config.ATTN_IMPL)
+    items = base.model.create_voice_clone_prompt(
+        ref_audio=ref_wav, ref_text=ref_text, x_vector_only_mode=False)
+    item = items[0]
+    item.ref_spk_embedding = item.ref_spk_embedding.to(config.DEVICE).to(_torch_dtype())
+    if item.ref_code is not None:
+        item.ref_code = item.ref_code.to(config.DEVICE)
+    del base
+    torch.cuda.empty_cache()
+
     cv = FasterQwen3TTS.from_pretrained(
         CUSTOM, device=config.DEVICE, dtype=_torch_dtype(),
         attn_implementation=config.ATTN_IMPL)
-
-    # Attempt 1 — direct ICL on the CustomVoice model.
-    try:
-        audio, sr = cv.generate_voice_clone(
-            text=TEXT, language="English", ref_audio=ref_wav, ref_text=ref_text,
-            instruct=INSTRUCT, xvec_only=False)
-        sf.write("outputs/icl_direct.wav", audio[0], sr)
-        print(f"[1] DIRECT ICL OK -> outputs/icl_direct.wav ({len(audio[0])/sr:.2f}s)")
-    except Exception as exc:
-        print(f"[1] DIRECT ICL FAILED: {type(exc).__name__}: {exc}")
-
-    # Attempt 2 — build the ICL prompt with Base, then feed CustomVoice.
-    try:
-        base = FasterQwen3TTS.from_pretrained(
-            BASE, device=config.DEVICE, dtype=_torch_dtype(),
-            attn_implementation=config.ATTN_IMPL)
-        items = base.model.create_voice_clone_prompt(
-            ref_audio=ref_wav, ref_text=ref_text, x_vector_only_mode=False)
-        item = items[0]
-        dev = cv.model.talker.device
-        item.ref_spk_embedding = item.ref_spk_embedding.to(dev).to(_torch_dtype())
-        if item.ref_code is not None:
-            item.ref_code = item.ref_code.to(dev)
-        del base
-        torch.cuda.empty_cache()
-        audio, sr = cv.generate_voice_clone(
-            text=TEXT, language="English", voice_clone_prompt=[item],
-            ref_text=ref_text, instruct=INSTRUCT, xvec_only=False)
-        sf.write("outputs/icl_via_base.wav", audio[0], sr)
-        print(f"[2] BASE-BUILT ICL OK -> outputs/icl_via_base.wav ({len(audio[0])/sr:.2f}s)")
-    except Exception as exc:
-        print(f"[2] BASE-BUILT ICL FAILED: {type(exc).__name__}: {exc}")
-
+    audio, sr = cv.generate_voice_clone(
+        text=TEXT, language="English", voice_clone_prompt=[item],
+        ref_text=ref_text, instruct=INSTRUCT, xvec_only=False)
+    sf.write("outputs/icl_via_base.wav", audio[0], sr)
+    print(f"BASE-BUILT ICL OK -> outputs/icl_via_base.wav ({len(audio[0])/sr:.2f}s)")
     return 0
 
 

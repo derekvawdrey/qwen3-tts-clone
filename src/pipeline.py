@@ -30,7 +30,7 @@ import config  # noqa: E402
 from src.clone_voice import (  # noqa: E402
     EXPRESSIVE_TTS_MODEL,
     ensure_reference_wav,
-    get_speaker_embedding,
+    get_clone_prompt,
     load_model,
     prepare_reference,
     synthesize_stream,
@@ -187,7 +187,8 @@ class Speaker(threading.Thread):
 
     def __init__(self, text_q, audio_q, speaking_evt, stop_evt,
                  output_device=None, instruct=None, events_q=None, half_duplex=True,
-                 ref_audio=None, ref_text=None, language=None, expressive=False):
+                 ref_audio=None, ref_text=None, language=None, expressive=False,
+                 icl=False):
         super().__init__(name="Speaker", daemon=True)
         self.text_q = text_q
         self.audio_q = audio_q
@@ -202,6 +203,7 @@ class Speaker(threading.Thread):
         self.ref_text = ref_text    # transcript of the clip, or None for config default
         self.language = language or config.LANGUAGE
         self.expressive = expressive  # cloned identity + instruction (1.7B CustomVoice)
+        self.icl = icl                # expressive: in-context (ref audio+text) vs x-vector
 
     def run(self):
         kind = "expressive clone (1.7B CustomVoice)" if self.expressive else "Qwen3-TTS"
@@ -209,11 +211,14 @@ class Speaker(threading.Thread):
         try:
             ref_wav = str(prepare_reference(self.ref_audio) if self.ref_audio
                           else ensure_reference_wav())
-            # Extract the x-vector BEFORE loading the synthesis model: the Base
+            ref_text = config.REF_TEXT if self.ref_text is None else self.ref_text
+            # Build the clone prompt BEFORE loading the synthesis model: the Base
             # model loads transiently and frees, keeping the VRAM peak lower.
             if self.expressive:
-                _emit(self.events_q, "info", text="extracting speaker embedding…")
-                get_speaker_embedding(ref_wav)
+                use_icl = bool(self.icl and ref_text and ref_text.strip())
+                _emit(self.events_q, "info",
+                      text=f"building {'ICL' if use_icl else 'x-vector'} clone prompt…")
+                get_clone_prompt(ref_wav, ref_text=ref_text, icl=use_icl)
             load_model(EXPRESSIVE_TTS_MODEL if self.expressive else None)
         except Exception as exc:
             _emit(self.events_q, "error", text=f"TTS load failed: {exc}")
@@ -235,7 +240,7 @@ class Speaker(threading.Thread):
                 for chunk, sr in synthesize_stream(
                     text, language=self.language, ref_audio=ref_wav,
                     ref_text=self.ref_text, instruct=self.instruct,
-                    expressive=self.expressive,
+                    expressive=self.expressive, icl=self.icl,
                 ):
                     player(chunk, sr)
             except Exception as exc:  # one bad utterance shouldn't kill the loop
@@ -271,7 +276,7 @@ class Pipeline:
 
     def __init__(self, input_device=None, output_device=None, instruct=None,
                  events_q=None, half_duplex=True, ref_audio=None, ref_text=None,
-                 language=None, expressive=False):
+                 language=None, expressive=False, icl=False):
         self.input_device = input_device
         self.output_device = output_device
         self.instruct = instruct
@@ -281,6 +286,7 @@ class Pipeline:
         self.ref_text = ref_text
         self.language = language
         self.expressive = expressive
+        self.icl = icl
         self.audio_q = queue.Queue(maxsize=200)   # ~6 s @ 32 ms frames
         self.text_q = queue.Queue(maxsize=4)
         self.speaking = threading.Event()
@@ -322,7 +328,7 @@ class Pipeline:
         speaker = Speaker(self.text_q, self.audio_q, self.speaking, self.stop_evt,
                           self.output_device, self.instruct, self.events_q,
                           self.half_duplex, self.ref_audio, self.ref_text,
-                          self.language, self.expressive)
+                          self.language, self.expressive, self.icl)
         transcriber = Transcriber(self.audio_q, self.text_q, self.speaking,
                                   self.stop_evt, self.events_q, self.half_duplex)
         mic = MicSource(self.audio_q, self.stop_evt, self.input_device, self.events_q)

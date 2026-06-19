@@ -129,14 +129,58 @@ def get_speaker_embedding(ref_wav: str):
     return emb
 
 
+_ICL_PROMPT_CACHE: dict = {}
+
+
+def get_clone_prompt(ref_wav: str, ref_text: str | None = None, icl: bool = False):
+    """Build CPU prompt tensors for expressive synthesis.
+
+    Returns {"emb": <x-vector>, "code": <ref codes or None>, "icl": bool}.
+    x-vector (icl=False): just the embedding (disk-cached, see get_speaker_embedding).
+    ICL (icl=True): full reference (ref_code + embedding + transcript), built by the
+    Base model and cached in memory per (clip, ref_text) for the session. Both load
+    the Base model transiently and free it.
+    """
+    if not icl:
+        return {"emb": get_speaker_embedding(ref_wav), "code": None, "icl": False}
+
+    key = (ref_wav, ref_text or "")
+    if key in _ICL_PROMPT_CACHE:
+        return _ICL_PROMPT_CACHE[key]
+
+    import torch
+    from faster_qwen3_tts import FasterQwen3TTS
+
+    base = FasterQwen3TTS.from_pretrained(
+        EXPRESSIVE_EMBED_MODEL, device=config.DEVICE, dtype=_torch_dtype(),
+        attn_implementation=config.ATTN_IMPL)
+    try:
+        it = base.model.create_voice_clone_prompt(
+            ref_audio=ref_wav, ref_text=ref_text or "", x_vector_only_mode=False)[0]
+        res = {
+            "emb": it.ref_spk_embedding.detach().to("cpu"),
+            "code": it.ref_code.detach().to("cpu") if it.ref_code is not None else None,
+            "icl": True,
+        }
+    finally:
+        del base
+        torch.cuda.empty_cache()
+    _ICL_PROMPT_CACHE[key] = res
+    return res
+
+
 def synthesize_stream(text, *, language=None, ref_audio=None, ref_text=None,
-                      instruct=None, expressive=False):
+                      instruct=None, expressive=False, icl=False):
     """Yield (audio_chunk, sample_rate) for `text` in the cloned voice.
 
     expressive=False: standard fast clone on ``config.MODEL_ID`` (instruct is
     accepted but the base model follows it unreliably).
-    expressive=True:  clone identity + instruction via the 1.7B CustomVoice
-    model, feeding the reference's extracted x-vector as the speaker.
+    expressive=True:  clone identity + instruction via the 1.7B CustomVoice model.
+        icl=False (x-vector): feed the speaker embedding only — compact, language-
+            agnostic, instruction-following weaker.
+        icl=True (in-context): feed the reference audio + transcript — follows
+            instructions more strongly; needs an accurate ``ref_text``. Falls back
+            to x-vector if no ref_text is available.
     """
     ref_wav = str(prepare_reference(ref_audio) if ref_audio else ensure_reference_wav())
     ref_text = config.REF_TEXT if ref_text is None else ref_text
@@ -144,12 +188,26 @@ def synthesize_stream(text, *, language=None, ref_audio=None, ref_text=None,
     instruct = config.INSTRUCT if instruct is None else instruct
 
     if expressive:
-        emb = get_speaker_embedding(ref_wav).to(config.DEVICE).to(_torch_dtype())
+        use_icl = bool(icl and ref_text and ref_text.strip())
+        p = get_clone_prompt(ref_wav, ref_text=ref_text, icl=use_icl)
         model = load_model(EXPRESSIVE_TTS_MODEL)
-        stream = model.generate_voice_clone_streaming(
-            text=text, language=language,
-            voice_clone_prompt={"ref_spk_embedding": [emb]},
-            instruct=instruct or None, xvec_only=True, chunk_size=8)
+        emb = p["emb"].to(config.DEVICE).to(_torch_dtype())
+        if p["icl"]:
+            from qwen_tts.inference.qwen3_tts_model import VoiceClonePromptItem
+            code = p["code"]
+            item = VoiceClonePromptItem(
+                ref_code=code.to(config.DEVICE) if code is not None else None,
+                ref_spk_embedding=emb, x_vector_only_mode=False, icl_mode=True,
+                ref_text=ref_text)
+            stream = model.generate_voice_clone_streaming(
+                text=text, language=language, voice_clone_prompt=[item],
+                ref_text=ref_text, instruct=instruct or None, xvec_only=False,
+                chunk_size=8)
+        else:
+            stream = model.generate_voice_clone_streaming(
+                text=text, language=language,
+                voice_clone_prompt={"ref_spk_embedding": [emb]},
+                instruct=instruct or None, xvec_only=True, chunk_size=8)
     else:
         model = load_model()
         stream = model.generate_voice_clone_streaming(
@@ -169,6 +227,7 @@ def clone_to_file(
     ref_text: str | None = None,
     instruct: str | None = None,
     expressive: bool = False,
+    icl: bool = False,
 ) -> Path:
     """Synthesize `text` in the cloned reference voice and write a WAV.
 
@@ -193,7 +252,7 @@ def clone_to_file(
     chunks, sr = [], config.SAMPLE_RATE
     for chunk, sr in synthesize_stream(
         text, language=language, ref_audio=ref_audio, ref_text=ref_text,
-        instruct=instruct, expressive=expressive,
+        instruct=instruct, expressive=expressive, icl=icl,
     ):
         chunks.append(chunk)
 
@@ -210,13 +269,14 @@ def clone_to_speaker(
     ref_text: str | None = None,
     instruct: str | None = None,
     expressive: bool = False,
+    icl: bool = False,
 ) -> None:
     """Synthesize `text` in the cloned reference voice and stream to the speaker."""
     play = StreamPlayer()
     try:
         for chunk, sr in synthesize_stream(
             text, language=language, ref_audio=ref_audio, ref_text=ref_text,
-            instruct=instruct, expressive=expressive,
+            instruct=instruct, expressive=expressive, icl=icl,
         ):
             play(chunk, sr)
     finally:
