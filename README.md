@@ -55,8 +55,8 @@ Two Linux-only features don't apply on Windows:
 ## Personality voices
 
 The repo ships a catalog of ready-to-use voices (celebrities, characters, game
-NPCs) in `assets/personalities/` — bundled as small ~20 s mono MP3s (~10 MB
-total) with transcripts in `assets/personalities.json`. They show up in the
+NPCs) in `assets/personalities/` — bundled as small ~20–30 s mono MP3s with
+transcripts in `assets/personalities.json`. They show up in the
 GUI's **Clip** dropdown labelled `Name — Category`, with the reference text
 pre-filled, so you can clone any of them with no setup.
 
@@ -101,9 +101,21 @@ From the GUI you can choose, without touching `config.py`:
 - **Voice** — pick any clip in `assets/` or a bundled **personality** (grouped
   by category), **Browse…** for your own, edit its **reference text** (pre-filled
   and remembered per-clip), or **Auto-transcribe** it with Whisper.
-- **Generation** — TTS model (0.6B/1.7B), language, and the `instruct` style prompt.
+- **Generation** — TTS model (0.6B/1.7B), language, the `instruct` style prompt,
+  and the **expressive clone** toggle (+ its **ICL mode** sub-option; see below).
 - **Speech-to-text** — Whisper model size and the end-of-speech silence threshold.
 - **Routing** — the virtual mic and echo-guard toggles.
+
+Two **live toggles** in the bottom control bar flip instantly while the pipeline
+is running (no Apply / restart):
+
+- **Output: Cloned voice ↔ My voice** — route your **real microphone** straight
+  to the output (bypassing speech-to-text + cloning) or the cloned voice. Lets
+  you drop in and out of your own voice mid-call.
+- **🎧 Monitor** — *also* play the cloned voice to your selected output device,
+  so you hear it in your headphones while it feeds the virtual mic. Enabled only
+  when the virtual mic is on (otherwise the output already reaches your speaker);
+  with output set to *Auto* it goes to your system default device.
 
 Settings persist to `.gui_settings.json` and are restored next launch. Changes
 apply when you press **Apply settings** (switching the TTS model triggers a
@@ -119,7 +131,15 @@ uv run python -m src.pipeline      # speak; Ctrl+C to stop
 How it works: three threads connected by queues —
 `MicSource` (16 kHz capture) → `Transcriber` (Silero VAD segments speech, then
 faster-whisper transcribes) → `Speaker` (`generate_voice_clone_streaming` →
-`StreamPlayer`).
+`StreamPlayer`). A fourth `Passthrough` thread plays the raw mic to the output
+when **My voice** mode is on.
+
+**Glitch watchdog.** The model occasionally runs away (loops/repeats), producing
+far more audio than the input warrants. The `Speaker` enforces a per-utterance
+budget scaled to the input length and, if generation exceeds it (or stalls),
+aborts that utterance and moves to the next queued item. Because synthesis is a
+lazy generator, dropping it actually halts the work. Tune via the `GEN_*` env
+vars in `config.py`.
 
 **Half-duplex vs barge-in.** The "Mute mic while speaking" option is an *echo
 guard*: it's only needed when the TTS plays through **speakers** the mic can
@@ -136,7 +156,8 @@ see a normal mic named **`QwenTTS_Microphone`**; the TTS is routed into it. The
 devices are torn down on exit. See `src/virtual_mic.py`.
 
 > When the virtual mic is on, the cloned voice is routed to the virtual device
-> (so other apps can hear it) and is **not** played through your speakers.
+> (so other apps can hear it) and is **not** played through your speakers — turn
+> on the **🎧 Monitor** toggle to also hear it on your selected output device.
 
 ## Audio device notes
 
@@ -200,6 +221,16 @@ Enable it with the GUI checkbox **"Experimental: expressive clone"** (or
 - Still "experimental": it feeds an x-vector into a model trained on preset
   personas, so identity/instruction balance varies by voice and prompt.
 
+Two sub-modes, via the **ICL mode** checkbox (`icl=`), default **off**:
+
+- **x-vector** (default): feeds only the pooled speaker embedding — compact,
+  language-agnostic, fast.
+- **ICL** (in-context): also feeds the reference audio codes + transcript, so it
+  needs an **accurate reference text**. It can follow instructions more strongly
+  on some voices, but is slower, eats prompt budget, and is sensitive to
+  transcript accuracy (a wrong/partial transcript hurts more than it helps) — so
+  keep reference clips short (~8–10 s) with a verified transcript when using it.
+
 ```python
 from src.clone_voice import clone_to_file
 clone_to_file("Target text.", "out.wav",
@@ -230,4 +261,10 @@ export QWEN_TTS_ATTN="flash_attention_2"           # if flash-attn is installed
 export REF_TEXT="...exact transcript of the clip..."
 export STT_MODEL="base.en"          # faster-whisper model for the realtime loop
 export VAD_SILENCE_MS=600           # silence (ms) that ends an utterance
+
+# Glitch watchdog (abort a runaway/stalled generation, scaled to input length):
+export GEN_MAX_AUDIO_FACTOR=3.0     # abort if audio > FLOOR + FACTOR*expected_sec
+export GEN_MAX_AUDIO_FLOOR=3.0
+export GEN_TIMEOUT_FACTOR=6.0       # wall-clock backstop (same shape)
+export GEN_TIMEOUT_FLOOR=5.0
 ```
