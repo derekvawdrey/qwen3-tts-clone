@@ -196,7 +196,7 @@
       "audio": "assets/personalities/ian.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "About six months ago, Anita Bryant, in her speaking to God, said that the drought in California was because of the gay people. On November the 9th, the day after I got elected, it started to rain. On the day I got sworn in, we walked a city hall in it."
+      "ref_text": "About six months ago, Anita Bryant, in her speaking to God, said that the drought in California wbecause of the gay people. On November the 9th, the day after I got elected, it started to rain. On the day I got sworn in, we walked a city hall in it."
     },
     {
       "slug": "jack-sparrow",
@@ -291,7 +291,7 @@
     {
       "slug": "jordan",
       "name": "Jordan Peterson",
-      "category": "Popular Voices",
+      "caas tegory": "Popular Voices",
       "audio": "assets/personalities/jordan.mp3",
       "language": "English",
       "instruct": "",
@@ -529,7 +529,7 @@
       "audio": "assets/personalities/smeagol.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "I smell your... ...promised. I don't know. I can't help it. Master's got it. I... ...smell your... ...promised to help the master. It's... ...smell your... ...set it would be... ...very, very..."
+      "ref_text": "smeagol promised, I don't know, I I can't help it. Masters got it. Smeagol promised to help the master, but smeagol said it would be very very"
     },
     {
       "slug": "fry",
