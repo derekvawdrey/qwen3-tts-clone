@@ -1,4 +1,4 @@
-.PHONY: setup prep test clone-test transcribe demo clean
+.PHONY: setup prep test clone-test transcribe demo gui clean
 
 setup:            ## uv sync + install + prep audio
 	./setup.sh
@@ -24,6 +24,9 @@ flash-attn:       ## Install prebuilt FlashAttention 2 (optional, speeds up infe
 
 demo:             ## Generate a sample line in the cloned voice
 	uv run python -m src.clone_voice "The trade deficit is way down, believe me." outputs/demo.wav
+
+gui:              ## Launch the speech-to-speech GUI (syncs realtime deps first)
+	./run-gui.sh
 
 clean:            ## Remove generated outputs and the prepped WAV
 	rm -rf outputs assets/trump_trade_deficit.wav .pytest_cache

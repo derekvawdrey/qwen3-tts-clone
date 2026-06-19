@@ -32,6 +32,26 @@ uv run python -m src.clone_voice "The trade deficit is way down, believe me."
 # or:  make demo
 ```
 
+### Windows
+
+The core pipeline (one-off generation, the realtime loop, and the Tkinter GUI)
+runs on Windows — torch/torchaudio ship Windows CUDA 12.8 wheels. Use the
+PowerShell setup script instead of `setup.sh`:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\setup.ps1
+uv run python -m src.clone_voice "Hello from a cloned voice." outputs/hello.wav
+```
+
+Two Linux-only features don't apply on Windows:
+
+- **Virtual microphone** — `src/virtual_mic.py` uses `pactl`
+  (PulseAudio/PipeWire), which Windows lacks; the GUI simply won't offer it.
+  To feed the cloned voice into Zoom/Discord/etc., install
+  [VB-CABLE](https://vb-audio.com/Cable/) and select it as the output device.
+- **`flash` extra** — its wheel is `linux_x86_64`. Stick with the default
+  `sdpa` attention (don't pass `--extra flash`).
+
 ## Realtime speech-to-speech
 
 Installs faster-whisper (STT), Silero VAD (utterance detection), and sounddevice:
