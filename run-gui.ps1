@@ -23,7 +23,9 @@ if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
 }
 
 Write-Host ">> Ensuring realtime deps (faster-whisper, silero-vad, sounddevice)"
-uv sync --extra realtime
+# --inexact: add the realtime extra without uninstalling anything outside it
+# (on Windows flash-attn won't be present anyway; harmless here).
+uv sync --inexact --extra realtime
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Write-Host ">> Launching GUI"
