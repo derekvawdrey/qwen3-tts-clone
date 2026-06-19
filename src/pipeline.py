@@ -27,7 +27,11 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import config  # noqa: E402
-from src.clone_voice import ensure_reference_wav, load_model  # noqa: E402
+from src.clone_voice import (  # noqa: E402
+    ensure_reference_wav,
+    load_model,
+    prepare_reference,
+)
 from src.helpers import StreamPlayer  # noqa: E402
 
 MIC_RATE = 16000       # Silero VAD + Whisper both expect 16 kHz mono
@@ -179,7 +183,8 @@ class Speaker(threading.Thread):
     """Speak each text from text_q in the cloned voice, gating the mic meanwhile."""
 
     def __init__(self, text_q, audio_q, speaking_evt, stop_evt,
-                 output_device=None, instruct=None, events_q=None, half_duplex=True):
+                 output_device=None, instruct=None, events_q=None, half_duplex=True,
+                 ref_audio=None, ref_text=None, language=None):
         super().__init__(name="Speaker", daemon=True)
         self.text_q = text_q
         self.audio_q = audio_q
@@ -190,15 +195,20 @@ class Speaker(threading.Thread):
         self.instruct = config.INSTRUCT if instruct is None else instruct
         self.events_q = events_q
         self.half_duplex = half_duplex
+        self.ref_audio = ref_audio  # path to a reference clip, or None for config default
+        self.ref_text = ref_text    # transcript of the clip, or None for config default
+        self.language = language or config.LANGUAGE
 
     def run(self):
         _emit(self.events_q, "info", text="loading Qwen3-TTS…")
         try:
             model = load_model()
-            ref_audio = str(ensure_reference_wav())
+            ref_audio = str(prepare_reference(self.ref_audio) if self.ref_audio
+                            else ensure_reference_wav())
         except Exception as exc:
             _emit(self.events_q, "error", text=f"TTS load failed: {exc}")
             return
+        ref_text = config.REF_TEXT if self.ref_text is None else self.ref_text
         _emit(self.events_q, "info", text="TTS ready")
 
         while not self.stop_evt.is_set():
@@ -215,9 +225,9 @@ class Speaker(threading.Thread):
             try:
                 for chunk, sr, _timing in model.generate_voice_clone_streaming(
                     text=text,
-                    language=config.LANGUAGE,
+                    language=self.language,
                     ref_audio=ref_audio,
-                    ref_text=config.REF_TEXT,
+                    ref_text=ref_text,
                     instruct=self.instruct or None,
                     chunk_size=8,
                 ):
@@ -254,12 +264,16 @@ class Pipeline:
     """Controllable mic->STT->TTS loop. Start/stop and observe via events_q."""
 
     def __init__(self, input_device=None, output_device=None, instruct=None,
-                 events_q=None, half_duplex=True):
+                 events_q=None, half_duplex=True, ref_audio=None, ref_text=None,
+                 language=None):
         self.input_device = input_device
         self.output_device = output_device
         self.instruct = instruct
         self.events_q = events_q
         self.half_duplex = half_duplex
+        self.ref_audio = ref_audio
+        self.ref_text = ref_text
+        self.language = language
         self.audio_q = queue.Queue(maxsize=200)   # ~6 s @ 32 ms frames
         self.text_q = queue.Queue(maxsize=4)
         self.speaking = threading.Event()
@@ -276,7 +290,8 @@ class Pipeline:
         _emit(self.events_q, "status", value="loading")
         speaker = Speaker(self.text_q, self.audio_q, self.speaking, self.stop_evt,
                           self.output_device, self.instruct, self.events_q,
-                          self.half_duplex)
+                          self.half_duplex, self.ref_audio, self.ref_text,
+                          self.language)
         transcriber = Transcriber(self.audio_q, self.text_q, self.speaking,
                                   self.stop_evt, self.events_q, self.half_duplex)
         mic = MicSource(self.audio_q, self.stop_evt, self.input_device, self.events_q)

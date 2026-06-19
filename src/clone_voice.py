@@ -27,6 +27,27 @@ def ensure_reference_wav() -> Path:
     return config.REF_AUDIO_WAV
 
 
+def prepare_reference(audio_path: str | Path) -> Path:
+    """Decode any audio file to a mono WAV at the model's sample rate.
+
+    Reuses scripts.prep_audio.load_audio (soundfile/librosa, no ffmpeg needed)
+    and caches the result under outputs/refs/<stem>.wav.
+    """
+    from scripts.prep_audio import load_audio
+    import soundfile as sf
+
+    audio_path = Path(audio_path)
+    out_dir = config.OUTPUT_DIR / "refs"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    dst = out_dir / f"{audio_path.stem}.wav"
+    # Reuse the cached WAV unless the source is newer.
+    if dst.exists() and dst.stat().st_mtime >= audio_path.stat().st_mtime:
+        return dst
+    data, sr = load_audio(audio_path, config.SAMPLE_RATE)
+    sf.write(str(dst), data, sr, subtype="PCM_16")
+    return dst
+
+
 @lru_cache(maxsize=1)
 def load_model():
     """Load the Qwen3-TTS Base model once (cached for reuse across calls).
