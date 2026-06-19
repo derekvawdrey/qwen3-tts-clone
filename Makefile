@@ -1,4 +1,4 @@
-.PHONY: setup prep test clone-test transcribe demo gui clean
+.PHONY: setup prep test clone-test transcribe personalities demo gui clean
 
 setup:            ## uv sync + install + prep audio
 	./setup.sh
@@ -14,6 +14,9 @@ clone-test:       ## Full voice-cloning test (downloads model, uses GPU)
 
 transcribe:       ## Auto-transcribe the reference clip with Whisper (optional)
 	uv run --extra transcribe python scripts/transcribe.py
+
+personalities:    ## Download + trim + transcribe the aiartes voice catalog into assets/personalities/
+	uv run --extra transcribe python scripts/fetch_personalities.py
 
 # Install the official *prebuilt* FlashAttention 2 wheel (matches torch 2.8 /
 # CUDA 12 / cp311). No compilation — installs in seconds. The wheel URL lives in

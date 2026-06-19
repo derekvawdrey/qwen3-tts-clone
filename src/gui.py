@@ -82,6 +82,14 @@ class App:
         self.settings = self._load_settings()
         self.ref_texts: dict = self.settings.get("ref_texts", {})
         self._voice_paths: dict[str, str] = {}
+        # Downloadable "personality" presets (assets/personalities.json), merged
+        # into the voice picker. Reference text is keyed by clip stem.
+        from src.personalities import load_personalities
+        self.personalities = load_personalities()
+        self._preset_texts = dict(PRESET_TEXTS)
+        for p in self.personalities:
+            if p["ref_text"]:
+                self._preset_texts[Path(p["audio"]).stem] = p["ref_text"]
 
         self._apply_theme()
         self._build_widgets()
@@ -340,6 +348,12 @@ class App:
                 # prefer an existing .wav sibling (already prepped) if present
                 wav = f.with_suffix(".wav")
                 self._voice_paths[f.stem] = str(wav if wav.exists() else f)
+        # Append personality presets, labelled "Name — Category" for grouping.
+        for p in self.personalities:
+            label = f"{p['name']} — {p['category']}"
+            while label in self._voice_paths:
+                label += " "
+            self._voice_paths[label] = p["audio"]
         self.voice_combo["values"] = list(self._voice_paths)
         # default selection: the config reference clip's stem, else first
         default_stem = Path(config.REF_AUDIO_MP3).stem
@@ -357,7 +371,7 @@ class App:
         if not path:
             return
         # remembered text > preset > leave as-is
-        text = self.ref_texts.get(path) or PRESET_TEXTS.get(Path(path).stem)
+        text = self.ref_texts.get(path) or self._preset_texts.get(Path(path).stem)
         if text is not None:
             self._set_ref_text(text)
 

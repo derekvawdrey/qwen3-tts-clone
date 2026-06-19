@@ -52,6 +52,29 @@ Two Linux-only features don't apply on Windows:
 - **`flash` extra** — its wheel is `linux_x86_64`. Stick with the default
   `sdpa` attention (don't pass `--extra flash`).
 
+## Personality voices
+
+The repo ships a catalog of ready-to-use voices (celebrities, characters, game
+NPCs) in `assets/personalities/` — bundled as small ~20 s mono MP3s (~10 MB
+total) with transcripts in `assets/personalities.json`. They show up in the
+GUI's **Clip** dropdown labelled `Name — Category`, with the reference text
+pre-filled, so you can clone any of them with no setup.
+
+To (re)build or refresh the catalog from [aiartes.com](https://aiartes.com/voiceai):
+
+```bash
+make personalities                                   # all voices: download → trim 20s → transcribe
+uv run python scripts/fetch_personalities.py --list  # list available voices
+uv run python scripts/fetch_personalities.py --only arnold,gollum,kratos
+uv run python scripts/fetch_personalities.py --no-transcribe --seconds 15
+```
+
+The script is idempotent (won't re-download prepped clips) and writes the
+manifest incrementally. The full-length source MP3s are cached under
+`outputs/personalities_cache/` (gitignored). The samples are third-party
+celebrity/character clips fetched from the source site — bundled here for
+convenience; mind redistribution if you publish this repo.
+
 ## Realtime speech-to-speech
 
 Installs faster-whisper (STT), Silero VAD (utterance detection), and sounddevice:
