@@ -419,11 +419,6 @@ class App(QMainWindow):
         self.vad_spin.setSingleStep(100)
         self.vad_spin.setValue(int(config.VAD_SILENCE_MS))
         card.grid.addWidget(self.vad_spin, 1, 1, Qt.AlignLeft)
-        self.streaming_chk = QCheckBox(
-            "Streaming — speak while you talk (commit phrases mid-utterance; "
-            "best with virtual mic + barge-in)")
-        self.streaming_chk.setChecked(False)
-        card.grid.addWidget(self.streaming_chk, 2, 0, 1, 3)
         col.addWidget(card)
 
     def _build_routing(self, col):
@@ -625,7 +620,6 @@ class App(QMainWindow):
             duplex=self.duplex_chk.isChecked(),
             passthrough=self.voice_toggle.isChecked(),
             monitor=self.monitor_toggle.isChecked(),
-            streaming=self.streaming_chk.isChecked(),
         )
 
     def _apply(self):
@@ -689,8 +683,7 @@ class App(QMainWindow):
             expressive=cfg["expressive"], icl=cfg["icl"],
             passthrough=cfg["passthrough"],
             monitor_device=cfg["output_device"],
-            monitor=cfg["monitor"] and cfg["vmic"],
-            streaming=cfg["streaming"])
+            monitor=cfg["monitor"] and cfg["vmic"])
         self.pipeline.start()
         self.apply_btn.setEnabled(True)
         self.stop_btn.setEnabled(True)
@@ -768,7 +761,6 @@ class App(QMainWindow):
             "duplex": self.duplex_chk.isChecked(),
             "expressive": self.expressive_chk.isChecked(),
             "icl": self.icl_chk.isChecked(),
-            "streaming": self.streaming_chk.isChecked(),
             "ref_texts": self.ref_texts,
         }
         try:
@@ -808,8 +800,6 @@ class App(QMainWindow):
             self.expressive_chk.setChecked(bool(s["expressive"]))
         if "icl" in s:
             self.icl_chk.setChecked(bool(s["icl"]))
-        if "streaming" in s:
-            self.streaming_chk.setChecked(bool(s["streaming"]))
 
     def closeEvent(self, event):  # noqa: N802 (Qt override)
         try:
