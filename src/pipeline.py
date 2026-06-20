@@ -203,15 +203,13 @@ class Speaker(threading.Thread):
     def __init__(self, text_q, audio_q, speaking_evt, stop_evt,
                  output_device=None, instruct=None, events_q=None, half_duplex=True,
                  ref_audio=None, ref_text=None, language=None, expressive=False,
-                 icl=False, monitor_device=None, monitor_evt=None):
+                 icl=False):
         super().__init__(name="Speaker", daemon=True)
         self.text_q = text_q
         self.audio_q = audio_q
         self.speaking_evt = speaking_evt
         self.stop_evt = stop_evt
         self.output_device = output_device
-        self.monitor_device = monitor_device  # user's speaker for the headphone monitor
-        self.monitor_evt = monitor_evt         # set => also play to monitor_device
         # None => fall back to config default; "" => explicitly disabled
         self.instruct = config.INSTRUCT if instruct is None else instruct
         self.events_q = events_q
@@ -265,11 +263,9 @@ class Speaker(threading.Thread):
             )
             produced = 0
             t0 = time.monotonic()
-            monitor = None  # lazily opened headphone monitor player
             try:
                 for chunk, sr in stream:
                     player(chunk, sr)
-                    monitor = self._monitor_chunk(monitor, chunk, sr)
                     produced += len(chunk)
                     over_audio = produced / sr > max_audio_sec
                     over_wall = time.monotonic() - t0 > max_wall_sec
@@ -284,40 +280,12 @@ class Speaker(threading.Thread):
             finally:
                 stream.close()  # tear down the generator (stops generation if mid-stream)
                 player.close()
-                if monitor is not None:
-                    monitor.close(wait=False)
                 # In half-duplex, drop the echo tail captured during playback.
                 # In full-duplex, keep it — it may be the user barging in.
                 if self.half_duplex:
                     self._flush_mic()
                 self.speaking_evt.clear()
                 _emit(self.events_q, "status", value="listening")
-
-    def _monitor_chunk(self, monitor, chunk, sr):
-        """Mirror a chunk to the headphone monitor, opening/closing it live.
-
-        Returns the (possibly updated) monitor player. The monitor opens with
-        PULSE_SINK ignored so it reaches the real speaker even while the main
-        stream is routed into the virtual mic.
-        """
-        active = self.monitor_evt is not None and self.monitor_evt.is_set()
-        if active:
-            if monitor is None:
-                try:
-                    monitor = StreamPlayer(device=self.monitor_device,
-                                           ignore_pulse_sink=True)
-                except Exception as exc:  # noqa: BLE001
-                    _emit(self.events_q, "error", text=f"monitor failed: {exc}")
-                    self.monitor_evt.clear()
-                    return None
-            try:
-                monitor(chunk, sr)
-            except Exception as exc:  # noqa: BLE001
-                _emit(self.events_q, "error", text=f"monitor failed: {exc}")
-        elif monitor is not None:
-            monitor.close(wait=False)
-            monitor = None
-        return monitor
 
     @staticmethod
     def _gen_budget(text: str) -> tuple[float, float]:
@@ -409,11 +377,9 @@ class Pipeline:
 
     def __init__(self, input_device=None, output_device=None, instruct=None,
                  events_q=None, half_duplex=True, ref_audio=None, ref_text=None,
-                 language=None, expressive=False, icl=False, passthrough=False,
-                 monitor_device=None, monitor=False):
+                 language=None, expressive=False, icl=False, passthrough=False):
         self.input_device = input_device
         self.output_device = output_device
-        self.monitor_device = monitor_device
         self.instruct = instruct
         self.events_q = events_q
         self.half_duplex = half_duplex
@@ -428,9 +394,6 @@ class Pipeline:
         self.passthrough_evt = threading.Event()
         if passthrough:
             self.passthrough_evt.set()
-        self.monitor_evt = threading.Event()
-        if monitor:
-            self.monitor_evt.set()
         self.speaking = threading.Event()
         self.stop_evt = threading.Event()
         self._threads: list[threading.Thread] = []
@@ -472,15 +435,6 @@ class Pipeline:
         _emit(self.events_q, "info",
               text="output: your own voice (passthrough)" if on else "output: cloned voice")
 
-    def set_monitor(self, on: bool):
-        """Live-toggle the headphone monitor (also play TTS to your speaker)."""
-        if on:
-            self.monitor_evt.set()
-        else:
-            self.monitor_evt.clear()
-        _emit(self.events_q, "info",
-              text="monitor on — playing to your speaker too" if on else "monitor off")
-
     def start(self):
         if self._threads:
             return
@@ -488,8 +442,7 @@ class Pipeline:
         speaker = Speaker(self.text_q, self.audio_q, self.speaking, self.stop_evt,
                           self.output_device, self.instruct, self.events_q,
                           self.half_duplex, self.ref_audio, self.ref_text,
-                          self.language, self.expressive, self.icl,
-                          self.monitor_device, self.monitor_evt)
+                          self.language, self.expressive, self.icl)
         transcriber = Transcriber(self.audio_q, self.text_q, self.speaking,
                                   self.stop_evt, self.events_q, self.half_duplex,
                                   self.passthrough_evt)

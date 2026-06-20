@@ -220,9 +220,6 @@ class App(QMainWindow):
         self._refresh_devices()
         self._populate_voices()
         self._apply_settings()
-        # Monitor only applies with the virtual mic on (otherwise output already
-        # reaches your speaker). Sync its enabled state once everything is built.
-        self.monitor_toggle.setEnabled(self.vmic_chk.isChecked())
 
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._poll_events)
@@ -295,20 +292,9 @@ class App(QMainWindow):
         self.voice_toggle.setToolTip(
             "Toggle between your real microphone and the cloned voice (live)")
         self.voice_toggle.toggled.connect(self._on_voice_toggle)
-        # Headphone monitor: also play TTS to the selected output device so you
-        # can hear it. Only meaningful with the virtual mic on (otherwise the
-        # output already goes to your speaker), so its enabled state tracks vmic.
-        self.monitor_toggle = QPushButton("🎧  Monitor: Off")
-        self.monitor_toggle.setObjectName("Ghost")
-        self.monitor_toggle.setCheckable(True)
-        self.monitor_toggle.setToolTip(
-            "Also play the cloned voice to your selected output device "
-            "(hear it in your headphones) while it feeds the virtual mic")
-        self.monitor_toggle.toggled.connect(self._on_monitor_toggle)
         ctrl.addWidget(self.apply_btn)
         ctrl.addWidget(self.stop_btn)
         ctrl.addWidget(self.voice_toggle)
-        ctrl.addWidget(self.monitor_toggle)
         ctrl.addStretch(1)
         root.addLayout(ctrl)
 
@@ -561,16 +547,6 @@ class App(QMainWindow):
 
     def _on_vmic_toggle(self, on: bool):
         self.duplex_chk.setChecked(not on)
-        # Monitor is only useful with the virtual mic on; enable/disable to match.
-        if hasattr(self, "monitor_toggle"):
-            self.monitor_toggle.setEnabled(on)
-            if not on:
-                self.monitor_toggle.setChecked(False)
-
-    def _on_monitor_toggle(self, on: bool):
-        self.monitor_toggle.setText("🎧  Monitor: On" if on else "🎧  Monitor: Off")
-        if self.pipeline and self.pipeline.running:
-            self.pipeline.set_monitor(on)
 
     def _on_instruct_change(self, *_):
         if self.pipeline and self.pipeline.running:
@@ -619,7 +595,6 @@ class App(QMainWindow):
             vmic=self.vmic_chk.isChecked(),
             duplex=self.duplex_chk.isChecked(),
             passthrough=self.voice_toggle.isChecked(),
-            monitor=self.monitor_toggle.isChecked(),
         )
 
     def _apply(self):
@@ -681,9 +656,7 @@ class App(QMainWindow):
             half_duplex=cfg["duplex"], ref_audio=cfg["voice_path"],
             ref_text=cfg["ref_text"] or None, language=cfg["language"] or None,
             expressive=cfg["expressive"], icl=cfg["icl"],
-            passthrough=cfg["passthrough"],
-            monitor_device=cfg["output_device"],
-            monitor=cfg["monitor"] and cfg["vmic"])
+            passthrough=cfg["passthrough"])
         self.pipeline.start()
         self.apply_btn.setEnabled(True)
         self.stop_btn.setEnabled(True)

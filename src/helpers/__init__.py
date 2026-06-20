@@ -59,15 +59,11 @@ class StreamPlayer:
     """Play streaming audio chunks through one persistent output stream."""
 
     def __init__(self, *, channels: int = 1, dtype: str = "float32", max_queue_chunks: int = 0,
-                 device=None, ignore_pulse_sink: bool = False):
+                 device=None):
         self.channels = channels
         self.dtype = dtype
         self.max_queue_chunks = max_queue_chunks
         self.device = device  # None => env AUDIO_OUTPUT_DEVICE, else 'pulse', else system default
-        # When True, open the stream with PULSE_SINK temporarily cleared so it binds
-        # to the user's real default sink instead of a virtual-mic sink (used for the
-        # headphone "monitor" player while TTS itself is routed into the virtual mic).
-        self.ignore_pulse_sink = ignore_pulse_sink
         self._device = None
 
         self._queue: queue.Queue[Optional[np.ndarray]] = queue.Queue(maxsize=max_queue_chunks)
@@ -142,22 +138,14 @@ class StreamPlayer:
         if out_rate != sample_rate:
             self._resampler = _StreamingResampler(sample_rate, out_rate)
 
-        # Bind the stream's sink now. For the monitor player, drop PULSE_SINK for
-        # the duration of the open so PulseAudio routes it to the real default
-        # output (headphones) rather than the virtual-mic sink.
-        prev_sink = os.environ.pop("PULSE_SINK", None) if self.ignore_pulse_sink else None
-        try:
-            self._stream = sd.OutputStream(
-                samplerate=out_rate,
-                device=self._device,
-                channels=self.channels,
-                dtype=self.dtype,
-                callback=self._callback,
-            )
-            self._stream.start()
-        finally:
-            if prev_sink is not None:
-                os.environ["PULSE_SINK"] = prev_sink
+        self._stream = sd.OutputStream(
+            samplerate=out_rate,
+            device=self._device,
+            channels=self.channels,
+            dtype=self.dtype,
+            callback=self._callback,
+        )
+        self._stream.start()
 
     def _resolve_device(self, sd):
         """Choose an output device. Prefer an explicit choice / env override,
