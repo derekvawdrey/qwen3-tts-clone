@@ -4,7 +4,7 @@ selectable "personality" voices for the clone GUI.
 
 For each voice it:
   1. downloads the *original* sample  (https://aiartes.com/records/<slug>_original.mp3)
-  2. trims leading/trailing silence, then keeps the first N seconds (default 20)
+  2. trims leading/trailing silence, then keeps the first N seconds (default 10)
   3. writes a 24 kHz mono WAV to  assets/personalities/<slug>.wav
   4. (optional) transcribes it with faster-whisper to fill the reference text
   5. records it in  assets/personalities.json  (the manifest the GUI reads)
@@ -99,7 +99,7 @@ def _decode(path: Path) -> tuple[np.ndarray, int]:
 def prep_clip(src_mp3: Path, dst: Path, seconds: float, target_sr: int) -> float:
     """Trim silence, keep the first `seconds`, resample, write MP3. Returns dur.
 
-    Output is a small mono MP3 (~100 KB for 20 s) so the catalog can be bundled
+    Output is a small mono MP3 (~50 KB for 10 s) so the catalog can be bundled
     in the repo cheaply; libsndfile (via soundfile) encodes it without ffmpeg.
     """
     import librosa
@@ -162,7 +162,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--only", help="comma-separated slugs to import (default: all)")
     ap.add_argument("--limit", type=int, help="import at most N voices")
-    ap.add_argument("--seconds", type=float, default=20.0, help="clip length to keep (default 20)")
+    ap.add_argument("--seconds", type=float, default=10.0, help="clip length to keep (default 10)")
     ap.add_argument("--stt-model", default="base.en", help="faster-whisper model (default base.en)")
     ap.add_argument("--no-transcribe", action="store_true", help="skip reference-text transcription")
     ap.add_argument("--force", action="store_true", help="re-download, re-prep, and re-transcribe")

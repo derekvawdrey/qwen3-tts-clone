@@ -1,13 +1,22 @@
 {
   "voices": [
     {
+      "slug": "jordan",
+      "name": "Jordan Peterson",
+      "caas tegory": "Popular Voices",
+      "audio": "assets/personalities/jordan.mp3",
+      "language": "English",
+      "instruct": "",
+      "ref_text": "It is, of course, completely presumptuous of me to dare to write and broadcast a video entitled Message to the Christian."
+    },
+    {
       "slug": "aerith",
       "name": "Aerith Gainsborough",
       "category": "Popular Voices",
       "audio": "assets/personalities/aerith.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "You made a promise. Maybe it's broken? Okay, let's go rescue Cloud. This room gives me the creeps. Hey, watch the way you walk. But you like it so much you couldn't possibly share, right? How is it? Wow, this place is really something. Really? You're even more quiet than usual. Hey, you're not nervous, are you? I want-"
+      "ref_text": "You made a promise. Maybe it's broken? Okay, let's go rescue Cloud. This room gives me the creeps. Hey, watch the way you walk. But you like it so much, you couldn't..."
     },
     {
       "slug": "alan",
@@ -16,7 +25,7 @@
       "audio": "assets/personalities/alan.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "My mistress eyes are nothing like the sun. Coral is far more red than her lips red. If snow be white, why then her breasts are done? If hairs be wires, black wires grow on her head."
+      "ref_text": "My mistress eyes are nothing like the sun. Coral is far more red than her lips red. If snow be white."
     },
     {
       "slug": "dumbledore",
@@ -25,7 +34,7 @@
       "audio": "assets/personalities/dumbledore.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "I have a few start-of-term notices I wish to announce. The first years, please note that the dark forest is strictly forbidden to all students. Also our caretaker to everyone who does not wish to die a most painful death."
+      "ref_text": "I have a few start-of-term notices I wish to announce. The first year, please note that the dark forest is strictly..."
     },
     {
       "slug": "aloy",
@@ -34,7 +43,7 @@
       "audio": "assets/personalities/aloy.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "shouldn't use my weapons up here and be cheating. If I'm gonna prove myself in these trials, I should do it fair and square. I'll save the shooting for down in the hunting ground. I have three sons. Now they'll let me inside the hunter's lodge. Well, let's see how that turns out. So all you offer is training. You're awfully friendly. Who are you? Where are you?"
+      "ref_text": "shouldn't use my weapons up here. I'd be cheating. If I'm going to prove myself in these trials, I should do it fair and square. I'll save the shooting for down in the hunting ground. I have three sons."
     },
     {
       "slug": "tate",
@@ -43,7 +52,7 @@
       "audio": "assets/personalities/tate.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "They're trying to ban vape. It's all over Twitter that people are getting cancer from vape and all this shit. Vape is dangerous. Can you believe that James? Vape is dangerous. Can you believe that chemicals you can buy for a dollar that you can't even name? 40 or 50 chemicals that you've never heard of, you can't name, you don't know where they come from. All combined, try and taste like fucking water."
+      "ref_text": "They're trying to ban vape. It's all over Twitter that people are getting cancer from vape and all this shit. Vape is dangerous. Can you believe that James? Vape is dangerous. Can you believe that chemical"
     },
     {
       "slug": "arnold",
@@ -52,7 +61,7 @@
       "audio": "assets/personalities/arnold.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "Hello everybody and thank you for sharing your time with me. I'm sending this message to various different channels to reach my dear Russian friends and the Russian soldiers serving in Ukraine. Speaking to you today, because there are things that are going on in the world that are being kept from you, terrible things."
+      "ref_text": "Hello everybody, and thank you for sharing your time with me. I'm sending this message to various different channels to reach my dear Russian friends. And the Russian..."
     },
     {
       "slug": "barack-obama",
@@ -61,7 +70,7 @@
       "audio": "assets/personalities/barack-obama.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "I began writing this book shortly after the end of my presidency. After Michelle and I had boarded Air Force One for the last time and traveled west, for a long deferred break. The mood on the plane was bittersweet. Both of us were drained, physically and emotionally. Not only by the labors of the previous eight years, but by the unexpected-"
+      "ref_text": "I began writing this book shortly after the end of my presidency. After Michelle and I had boarded Air Force One for the last time and traveled west for a long deferred break."
     },
     {
       "slug": "batman",
@@ -70,7 +79,7 @@
       "audio": "assets/personalities/batman.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "one word of advice run your mind all of you you fools are going down i don't have time for this let's make it quick isn't this a school night just you guys pity are you looking for me you want some fine with me you're all"
+      "ref_text": "One word of advice run your mind all of you you fools are going down I don't have time for this"
     },
     {
       "slug": "ben",
@@ -79,7 +88,7 @@
       "audio": "assets/personalities/ben.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "Well, folks, MrBeast is the top YouTuber on planet Earth. His videos are really, really watchable, beautifully produced, really entertaining, but now he's got a major problem. Many people who are sort of outside the YouTube sphere have no idea who MrBeast is, but MrBeast is the single most popular YouTuber on YouTube, meaning he has tens of millions of followers, a huge number of people follow."
+      "ref_text": "Well, folks, MrBeast is the top YouTuber on Planet Earth. His videos are really, really watchable, beautifully produced, really entertaining, but now he's got a major problem. Many people who are sort of out."
     },
     {
       "slug": "bill",
@@ -88,7 +97,7 @@
       "audio": "assets/personalities/bill.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "Well, that's quite impressive. We don't need the music, but otherwise, we saw exactly what should happen. An outbreak's detected very quickly, literally within days. Doctors are dispatched. They have a helicopter to get into exactly ground zero. They go in there and they've got the right tools."
+      "ref_text": "Well, that's quite impressive. We don't need the music, but otherwise, we saw exactly what should happen. And outbreaks detected very quickly, literally."
     },
     {
       "slug": "chris",
@@ -97,7 +106,7 @@
       "audio": "assets/personalities/chris.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "Oh my God, I'm surrounded by food. Too much food today I see. Good evening guys, how you doing? Welcome to the Braun Japan live show, long time now to see. Unless, of course, you tuned in to the massive nine day cycle across Kyushin, which case, good to see you again. It's been five or six days. I finally regained the power of my leg."
+      "ref_text": "Oh my god, I'm surrounded by food. Too much food, dare I say. Good evening, guys. How you doing? Welcome to the Born Japan Live Show. Long time now to see. And let's."
     },
     {
       "slug": "christopher-lee",
@@ -106,7 +115,7 @@
       "audio": "assets/personalities/christopher-lee.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "surprise people, I would think probably our conversations on the telephone, because the kind of characters that he usually used to play in films, and certainly the ones that I did with him, or it had to be somewhat austere, to say the least, clinical, sometimes even quite cold blooded."
+      "ref_text": "surprise people, I would think probably our conversations on the telephone because the kind of characters that he usually used to play."
     },
     {
       "slug": "crestfallen",
@@ -115,7 +124,7 @@
       "audio": "assets/personalities/crestfallen.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "Well, what do we have here? You must be a new arrival. Let me guess, fate of the undead, right? Well, you're not the first, but there's no salvation here. You'd have done better to rot in the undead asylum. But too late."
+      "ref_text": "Well, what do we have here? You must be a new arrival. Let me guess, fate of the undead, right? Well..."
     },
     {
       "slug": "dave2d",
@@ -124,7 +133,7 @@
       "audio": "assets/personalities/dave2d.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "every ROG Ally review that's come out over the past couple of weeks has been flawed. And it's not through any fault of the creators or the publications, it was Asus because they sent out review units that just were not ready to be reviewed. These things were running drivers and firmware that were so underbaked. And when I started my review on this thing, I almost did it, right? I went through."
+      "ref_text": "every ROG Ally review that's come out over the past couple of weeks has been flawed. And it's not through any fault of the creators or the publications, it was ASUS because they sent out review units that ..."
     },
     {
       "slug": "david-attenborough",
@@ -133,7 +142,7 @@
       "audio": "assets/personalities/david-attenborough.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "Pripyat in the Ukraine is a place unlike anywhere else I've been, it's a place of utter despair. On the face of it, it seems quite a present town with avenues, hotels or square, a hospital with fairground rides, a central post office, a railway session. It has several schools."
+      "ref_text": "Pripyat in the Ukraine is a place unlike anywhere else I've been, it's a place of utter despair. On the face of it, it seems quite a"
     },
     {
       "slug": "donald-trump",
@@ -142,7 +151,7 @@
       "audio": "assets/personalities/donald-trump.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "I don't know exactly if that's true because it was certainly something that they're working on. It would imagine. I don't think anyone made it up. It sounded like him. He's a great man, by the way. He's a tremendous guy. But as a justice, he's just fantastic and you have some great ones up there now. But we have to find out what that means and is somebody going to do something about it? Are they going to try and change it? Is it real? Nobody really knows. I don't know who leaked it."
+      "ref_text": "You don't know exactly if that's true because it was certainly something that they're working on. It would imagine. I don't think anyone made it up. It sounded like him. He's a great man, by the way."
     },
     {
       "slug": "elon",
@@ -151,7 +160,7 @@
       "audio": "assets/personalities/elon.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "Yeah. I mean, we have archeologists going all over the world looking at things, you know, with us, the people. Like, if we were to find something like, let's say, like a cube of titanium, just like a one-inch cube of titanium, let's see, in the middle of the permit, I'd be like, aliens for sure. There's no way they could have made titanium back in it."
+      "ref_text": "Yeah. I mean, we have archeologists going all over the world looking at things, whether it's the people. If we were to find something, like, let's say, like a"
     },
     {
       "slug": "cartman",
@@ -160,7 +169,7 @@
       "audio": "assets/personalities/cartman.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "Go home you little gildo. I know what it means. I'm not telling you. That's what Kyle's little brother is alright. That's cuz I was having this. Well, just not mad. No, it was just a dream. My mom said so. I'll shut up you guys. You're just trying to make me scared. And it's not working. No, it's just a dream. And I'm not fat on big bombs. No. I mean, why would they just..."
+      "ref_text": "Go home, you little do-do. I know what it means. I'm not telling you. That's what Kyle's little brother is, alright? That's cause I was having this. We'll just not mess. No, it was just a dream, my m-"
     },
     {
       "slug": "geralt",
@@ -169,7 +178,7 @@
       "audio": "assets/personalities/geralt.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "A bit more light could be useful. A camp? Here? A crossbow. A giant this close to human settlements? Strange. A hundred. A key. A ladder. A man cursed, who's turned into a monster. A witcher might have to kill. A man with a sharp sword who doesn't like to repeat himself. A mask."
+      "ref_text": "A bit more light could be useful, a camp, here, a crossbow. A giant disclose to human settlements? Strange. A hundred, a key, a-"
     },
     {
       "slug": "gollum",
@@ -178,7 +187,7 @@
       "audio": "assets/personalities/gollum.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "Yes, yes, my precious. We promised to save the precious, not to let him have it, never. But it's going to him, yes, nearer."
+      "ref_text": "Yes, yes, my precious. We promised to save the precious nut."
     },
     {
       "slug": "hillary",
@@ -187,7 +196,7 @@
       "audio": "assets/personalities/hillary.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "I said, we owe Donald Trump an open mind and the chance to lead. I meant it. Every president deserves that. And Trump came in with so much set up for him. A strong economy plans for managing crises, including a pandemic. Yes, we Democrats would have disagreed with him on many things. But if..."
+      "ref_text": "I said, we owe Donald Trump an open mind and the chance to lead. I meant it. Every president deserves that. And Trump came in with so much setup for him."
     },
     {
       "slug": "ian",
@@ -196,7 +205,7 @@
       "audio": "assets/personalities/ian.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "About six months ago, Anita Bryant, in her speaking to God, said that the drought in California wbecause of the gay people. On November the 9th, the day after I got elected, it started to rain. On the day I got sworn in, we walked a city hall in it."
+      "ref_text": "About six months ago, Anita Bryant, in her speaking to God, said that the droughts in California was because of the gay people."
     },
     {
       "slug": "jack-sparrow",
@@ -205,7 +214,7 @@
       "audio": "assets/personalities/jack-sparrow.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "The cannon's boy, take them out with a powder kegs. Soon after our arctic escapade, we reset our calls and came to the dreaded Elida Muerta in search of Lady Elizabeth. Funny? I wasn't going to ask that, but since you offered... Oh, I've heard that version too. Told him poets by drunken, loud-spinning, fanciful yarns for another pint. If you want to hear that version..."
+      "ref_text": "The cannons boy, take them out with a powder kegs. Soon after our arctic escapade, we reset our calls and came to the dreaded Elidum Werther in search of Lady Elizabeth. Funny."
     },
     {
       "slug": "jeremy",
@@ -214,7 +223,7 @@
       "audio": "assets/personalities/jeremy.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "Let us go then, you and I, when the evening is spread out against the sky like a patient etherized upon a table. Let us go through certain half deserted streets, the muttering retreats of restless"
+      "ref_text": "Let us go then, you and I, when the evening is spread out against the sky like a patient etherized upon a table."
     },
     {
       "slug": "cramer",
@@ -223,7 +232,7 @@
       "audio": "assets/personalities/cramer.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "It's completely counterintuitive. I mean, you would think that these proposals are the kind of things that truly dampen the stock market. But I think that the stock market in the end is much more involved with another branch of the government, which Federal Reserve, you still get a better return. There was a terrific article today about California and how they're gonna have a budget surplus because it matters so much."
+      "ref_text": "it's completely counterintuitive you would think that these proposals are the kind of things that truly dampen the stock market uh... it but i think that the stock market in the end is much more involved with"
     },
     {
       "slug": "jim-dale",
@@ -232,7 +241,7 @@
       "audio": "assets/personalities/jim-dale.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "Mr. and Mrs. Dursley of number 4, Privet Driver, proud to say they were perfectly normal, thank you very much. They were the last people you'd expect to be involved in anything strange or mysterious, because they just didn't hold with such nonsense. Mr. Dursley was the director of a firm called Grannings, which made drills. He was a big beefy man with..."
+      "ref_text": "Mr. and Mrs. Dursley of Number 4 Privet Drive were proud to say they were perfectly normal. Thank you very much. They were the last people you'd expect to be involved in anything strange or mysterious."
     },
     {
       "slug": "jimmy",
@@ -241,7 +250,7 @@
       "audio": "assets/personalities/jimmy.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "You guys, the Super Mario Brothers movie is number one at the box office right now, and we thought with Suga here tonight, we combine music from the biggest movie with dancing from the biggest pop star. Let's see what happens. What is the lot going on in New York City? I mean, earlier tonight was the 2023 Met Gala to be there, although picking an outfit can be very stressful."
+      "ref_text": "You guys, the Super Mario Bros. movie is number one at the box office right now, and we thought with Suga here tonight, we combine music from the biggest movie with dancing from the..."
     },
     {
       "slug": "jin-sakai",
@@ -250,7 +259,7 @@
       "audio": "assets/personalities/jin-sakai.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "Thank you, Deku-ku. You will defeat the Khan together. I'm outnumbered. Need to strike faster. Kill another while the first bleeds. They can't react fast enough. I can deal with him one by one. They won't see me attack from above. The poison's just for now. After the Mongols are gone. I won't need it. Just for now. After the Mongols are gone."
+      "ref_text": "Thank you, Dekoku. You will defeat the Khan together. I'm outnumbered. Need to strike faster. Kill another while the first bleeds. They can't react fast enough. I can deal with him one bu-"
     },
     {
       "slug": "joe-biden",
@@ -259,7 +268,7 @@
       "audio": "assets/personalities/joe-biden.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "Well, first of all, let's put this in perspective. Inflation rate month to month was just an inch, hardly at all. No, I'm not saying it's good news, but it was 8.2 or 8.2 before. I mean, I can make it sound like all of a sudden, my God, it went to 8.2%. I got that, but guess what we are. We're in a position where, for the last several months, it hasn't spiked. It has just barely, it's been basically even. And in the meantime, we created all these jobs and price."
+      "ref_text": "Well, first of all, let's put this in perspective. Inflation rate month to month was just an inch. Harley at all. No, I'm not saying it's good news, but it was 8.2 or."
     },
     {
       "slug": "joe",
@@ -268,7 +277,7 @@
       "audio": "assets/personalities/joe.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "Now these people that live this life, do they have something they're working towards? Do they have an idea that they're working towards? I mean, when you press them on it and ask them like, why are you here? Do you ever play on leaving? Do you ever see yourself going somewhere else? When they say, that's what's confusing to me. Like, I understand that they're enjoying and I understand that they're..."
+      "ref_text": "Now these people that live this life, do they have something they're working towards? Do they have an idea that they're working towards? I mean, when you press them on it."
     },
     {
       "slug": "john-oliver",
@@ -277,7 +286,7 @@
       "audio": "assets/personalities/john-oliver.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "concerns the World Health Organization or WHO. You may already be aware of it in its role as one of the president's favourite punching bags. The WHO is not literally a pipe organ for China because the only thing that is literally a pipe organ for China is a pipe organ because that's what the word literally means."
+      "ref_text": "concerns the World Health Organization, or WHO. You may already be aware of it in its role as one of the president's favorite punching bags. The WHO is not lit."
     },
     {
       "slug": "joker",
@@ -286,16 +295,7 @@
       "audio": "assets/personalities/joker.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "Let's give a big hand to Mr. Abramovich. I mean, it's not like he couldn't use one. Hmph! You remember Mr. Abramovich, right? Don't worry, Batman. He's mostly armless. Get it? Hahaha! Harley! Stop screwing around!"
-    },
-    {
-      "slug": "jordan",
-      "name": "Jordan Peterson",
-      "caas tegory": "Popular Voices",
-      "audio": "assets/personalities/jordan.mp3",
-      "language": "English",
-      "instruct": "",
-      "ref_text": "It is, of course, completely presumptuous of me to dare to write and broadcast a video entitled Message to the Christian Churches, but I'm going to do it anyway because I have something to say and because that something needs to be said. I've been speaking to and watching and listening to"
+      "ref_text": "Let's give a big hand to Mr. Abramovich. I mean, it's not like he couldn't use one. You remember Mr. Abramovich, right? Don't..."
     },
     {
       "slug": "kanye",
@@ -304,7 +304,7 @@
       "audio": "assets/personalities/kanye.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "It looks cool. Like we make, I mean, I look at maybe 800 images a day. You know, I've been working on clothing seriously for the past 11 years. I interned at Fendi. I designed as a Nody Sneakers. People don't know that. I designed the Balmon Sneakers. People don't know that. I've influenced."
+      "ref_text": "It looks cool. Like we make, I mean, I look at maybe 800 images a day. You know, I've been working on clothing seriously for the."
     },
     {
       "slug": "kratos",
@@ -313,7 +313,7 @@
       "audio": "assets/personalities/kratos.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "Boy, on your feet, steady now! Dried. I see them! Freya is his mother. Why did you keep this from us, Ed? Go ahead. They are no longer children. They have no excuse. I am aware! Look out! This way. No. Another treasure hunt. Pointless. Keep your distance, boy! Keep your-"
+      "ref_text": "Boy, on your feet, steady now! Draw it. I see them. Freya is his mother. Why did you keep this from us head? Go ahead. There are no longer children."
     },
     {
       "slug": "lex",
@@ -322,7 +322,7 @@
       "audio": "assets/personalities/lex.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "Zechariah asks, Dr. Lex, I'm a high school student in Libya. I am very interested in new technology and artificial intelligence and have taken the online course CS50X from Harvard. What do you advise people like me to learn? I'm going to disadvantage because of my country's educational system."
+      "ref_text": "As Akurai asks, Dr. Lex, I'm a high school student in Libya. I am very interested in new technology and artificial intelligence."
     },
     {
       "slug": "liam",
@@ -331,7 +331,7 @@
       "audio": "assets/personalities/liam.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "A Monster calls by Patrick Ness, chapter one. The monster showed up just after midnight, as they do. Conan was awake when it came. He'd had a nightmare, well, not a nightmare, the nightmare."
+      "ref_text": "a monster called by Patrick Ness, chapter one. The monster showed up just after midnight as they do."
     },
     {
       "slug": "linus",
@@ -340,7 +340,7 @@
       "audio": "assets/personalities/linus.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "If you're not familiar with NVIDIA's previous generations of DLSS, here's a quick primer. The basic idea is that instead of asking your GPU to render every frame at your preferred resolution from scratch, it uses a machine learning algorithm that runs on special, tensor cores that live on your graphics card. This algorithm attempts to upscale"
+      "ref_text": "If you're not familiar with NVIDIA's previous generations of DLSS, here's a quick primer. The basic idea is that instead of asking your GPU to render every frame at your preferred resolution"
     },
     {
       "slug": "logan",
@@ -349,7 +349,7 @@
       "audio": "assets/personalities/logan.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "It is not enough to be not racist. You have to be anti-racist. All right, jokes aside, guys. As you know, we took last week off from the vlogs as we tried to push the message of equality. In case you didn't see my video, I'm stunned that we even have to still push that message. But apparently we do, and I will not be on the wrong side of history. I'm gonna make sure you fucking people vote. Cause we made a lot of noise last week, went to the pro-"
+      "ref_text": "It is not enough to be not racist. You have to be anti-racist. All right, jokes aside, guys. As you know, we took last week off from the vlogs as we tried to push the message of equality."
     },
     {
       "slug": "mark",
@@ -358,7 +358,7 @@
       "audio": "assets/personalities/mark.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "I believe the metaverse is the next chapter for the internet, and it's the next chapter for our company, too. So I've been thinking a lot about what this means for our company and who we are as we embark on this journey. We're a company that focuses on connecting people. Well, most other tech companies focus on how people interact"
+      "ref_text": "I believe the metaverse is the next chapter for the internet, and it's the next chapter for our company too. So I've been thinking a lot about what this means for our company and who we are."
     },
     {
       "slug": "marques",
@@ -367,7 +367,7 @@
       "audio": "assets/personalities/marques.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "So without any further ado, let's just jump right in. This is everything you need to know so far about Apple's new AR VR headset. So the first question, naturally, what is it? So first things first. This is a first generation device from Apple, which we don't see very often, but it is an augmented reality slash virtual reality."
+      "ref_text": "So without any further ado, let's just jump right in. This is everything you need to know so far about Apple's new AR VR headset. So the first question. Now."
     },
     {
       "slug": "melina",
@@ -376,7 +376,7 @@
       "audio": "assets/personalities/melina.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "as an ally by pact in America's own words. I ask that you cease. I shall see to the kindling. Treat him with respect. Goodbye, torrent. It is not to be meddled with in America's own words. Think not of the kindling."
+      "ref_text": "As an ally by pact, in America's own words, I ask that you cease. I shall see to the kindling, treat him with respect."
     },
     {
       "slug": "saylor",
@@ -385,7 +385,7 @@
       "audio": "assets/personalities/saylor.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "Hi, this is Michael. I'm the CEO of MicroStrategy. In our next session, we're going to talk about corporate strategy with regard to Bitcoin. And I'm really excited about this session. There's a lot of topics I wanted to cover. And I think they dovetail really nicely with what."
+      "ref_text": "Hi, this is Michael. I'm the CEO of MicroStrategy. In our next session, we're gonna talk about corporate strategy with regard to Bitcoin."
     },
     {
       "slug": "mrbeast",
@@ -394,7 +394,7 @@
       "audio": "assets/personalities/mrbeast.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "Yes, so, I got a mic on, so I just bought this brand new studio and 100 acres of land around it. And this is where we're filming all our videos going, not all, but all our indoor shoots going forward. I mean, ask me more questions. So the land around it, obviously the studio, the renovations and everything, and obviously we don't pay it all up front."
+      "ref_text": "Yes, so I got a mic on, so I just bought this brand new studio and a hundred acres of land around it. And this is where we're filming all our videos going."
     },
     {
       "slug": "oprah",
@@ -403,7 +403,7 @@
       "audio": "assets/personalities/oprah.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "I was the first one to turn in the book report and I was the, you know, read the most books and I would say reading is the strongest signal for success in the future that I've ever seen. It is the strongest, strongest, strongest. I got my first job in radio when I was 16 years old because I've been broadcasting since"
+      "ref_text": "I was the first one to turn in the book report and I was the, you know, read the most books and I would say reading is the strongest signal for success."
     },
     {
       "slug": "bateman",
@@ -412,7 +412,7 @@
       "audio": "assets/personalities/bateman.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "My pain is constant and sharp, and I do not hope for a better world for anyone. In fact, I want my pain to be inflicted on others. I want no one to escape. But even after admitting this, there is no catharsis."
+      "ref_text": "My pain is constant and sharp, and I do not hope for a better world for anyone. In fact, I want my pain to be inflicted on others."
     },
     {
       "slug": "patrick",
@@ -421,7 +421,7 @@
       "audio": "assets/personalities/patrick.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "A storm is coming, mankind faces ruin and despair. The world is changing, yet hope remains in the hearts of the people. We go about our daily lives never knowing the forces that can change our destinies forever. We are oblivious, ignorant like sheep."
+      "ref_text": "A storm is coming, mankind faces ruin and despair. The world is changing, yet hope remains in the hearts of the people."
     },
     {
       "slug": "pewdiepie",
@@ -430,7 +430,7 @@
       "audio": "assets/personalities/pewdiepie.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "rant today about some stuff that I noticed YouTubers do that is kind of weird there's a lot of it that doesn't necessarily get addressed a lot it probably does but regardless I'm gonna go through it and then I'm gonna ask you guys what your pet peeves I guess we can call it are and we'll compare if we have the same okay number one this is very specific"
+      "ref_text": "rant today about some stuff that I noticed YouTubers do that is kind of weird there's a lot of it that doesn't necessarily get addressed a lot it probably does but regardless I'm gonna"
     },
     {
       "slug": "queen",
@@ -439,7 +439,7 @@
       "audio": "assets/personalities/queen.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "I'm speaking to you at what I know is an increasingly challenging time, a time of disruption in the life of our country, a disruption that has brought grief to some financial difficulties to many, and enormous changes to the daily lives of us all."
+      "ref_text": "I'm speaking to you at what I know is an increasingly challenging time, a time of disruption in the life of our country, a disruption-"
     },
     {
       "slug": "ranni",
@@ -448,7 +448,7 @@
       "audio": "assets/personalities/ranni.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "The talk I surmise is of thee. Mmm, what is this? Ah, it was thee. You may leave now. Brave Tarnished. Do tread the path of valor. I've let slip too much. So it was..."
+      "ref_text": "The talk I surmised, is of thee. What is this? Ah! It was thee, you may..."
     },
     {
       "slug": "ray",
@@ -457,7 +457,7 @@
       "audio": "assets/personalities/ray.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "started meditating and they drew attention to it and it was a curiosity and I thought I would try it and then it's changed my life. It's the biggest influence in whatever success I've had in life. Wrestling around with it, I remember that..."
+      "ref_text": "started meditating and they drew attention to it and it was a curiosity and I thought I would try it and"
     },
     {
       "slug": "reggie",
@@ -466,7 +466,7 @@
       "audio": "assets/personalities/reggie.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "Hi Nintendo fans, Reggie here. By now, you may have heard the news. Yep, I'm retiring. I wanted to reach out directly to you, the Nintendo community, because there's one thing I really want to say. Thank you. Thank you for your never-ending support and for your-"
+      "ref_text": "I'm Nintendo fans, Reggie here. By now you may have heard the news, yep, I'm retiring. I wanted to reach out directly to you."
     },
     {
       "slug": "samuel",
@@ -475,7 +475,7 @@
       "audio": "assets/personalities/samuel.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "You want me to make you 15 G's, right?\" Hank kept after him. That's right, Jackson said, 15,000 bucks. He tried to sound happy, but he was scared. Sweat was trickling from his short kinky hair. His round black face was glistening like an eight ball. My cut'll be 10%, 15 C's, right?"
+      "ref_text": "You want me to make you 15 G's, right? Hank kept after him. That's right, Jackson said, 15,000 bucks. He tried to sound happy, but he was scared."
     },
     {
       "slug": "godin",
@@ -484,7 +484,7 @@
       "audio": "assets/personalities/godin.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "Okay, so there are a few things that need to be understood about Nike. Biggest one, you are not Nike. I am not Nike. Nike is a bit of a special case. Number two, the vast majority of Nike's future and its present is overseas sales. So they're showing up and they're saying, we're not."
+      "ref_text": "Okay, so there are a few things that need to be understood about Nike. Biggest one, you are not Nike. I am not Nike. Nike is a bit of a special case."
     },
     {
       "slug": "skyrim-astrid",
@@ -493,7 +493,7 @@
       "audio": "assets/personalities/skyrim-astrid.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "represent us well brother represent us well sister remember when you kill we all wield the blade watch yourself out there right then stay safe need something calm now dear husband you above all people should know what I'm capable of sometimes I just need to remind every"
+      "ref_text": "represent us well brother, represent us well sister. Remember. When you kill, we all wield the blade, watch yourself out there, right then."
     },
     {
       "slug": "skyrim-bandit",
@@ -502,7 +502,7 @@
       "audio": "assets/personalities/skyrim-bandit.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "Once you leave the party, you can't just come back. Let's see how tough you are without Sam keeping an eye on you. No Sam, no protection. Time to die. Well, if you say so, can't believe I got caught. Well, this is a nice mess you've gotten me into. That could have turned out better."
+      "ref_text": "Once you leave the party, you can't just come back. Let's see how tough you are without Sam keeping an eye on you. No Sam, no protection. Time to d-"
     },
     {
       "slug": "skyrim-brynjolf",
@@ -511,7 +511,7 @@
       "audio": "assets/personalities/skyrim-brynjolf.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "Now go and make us some coin lass. Yes, lad. Did you need something? Yes, lass. Did you need something? Good to see you, lad. How are things? Good to see you, lass. How are things? Things are looking up around here, lass. Things are looking up around here, lad. Genuine Falmer Blood Elixir for Sale. Live for thousands of years. See into other people's thoughts."
+      "ref_text": "Go and make us some coin loss. Yes, lot. Did you need something? Yes, lass. Did you need something? Good to see you lot. How are things? Good to see you lass. How are things?"
     },
     {
       "slug": "skyrim-serana",
@@ -520,7 +520,7 @@
       "audio": "assets/personalities/skyrim-serana.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "Wait, is he talking about me? Your life ends here, birther. Done and done. Teamwork right there. Where did you get to? Did you see where it went? Did you see where she went? Did you see where it went? You can't hide, father! What have you got? Tough day for you. I still remember how to fight. I'm not gonna die like this. This won't end well for you. Back to dust."
+      "ref_text": "Wait, is he talking about me? Your life ends here, birther. Done and done. Teamwork right there. Where did you get to? Did you see where he went? Did you see where she went?"
     },
     {
       "slug": "smeagol",
@@ -529,7 +529,7 @@
       "audio": "assets/personalities/smeagol.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "smeagol promised, I don't know, I I can't help it. Masters got it. Smeagol promised to help the master, but smeagol said it would be very"
+      "ref_text": "I smell your... blemest. I don't know. I can't help it. Master's got it."
     },
     {
       "slug": "fry",
@@ -538,7 +538,7 @@
       "audio": "assets/personalities/fry.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "writers, become so associated with a particular mode of imagining, describing, and presenting the world that their names are banded about in ways that would have surprised and almost certainly alarmed them. Every rakati slum or preposterously eccentric character is"
+      "ref_text": "writers, become so associated with a particular mode of imagining, describing, and presenting the world that their names are banded about..."
     },
     {
       "slug": "thatveganteacher",
@@ -547,7 +547,7 @@
       "audio": "assets/personalities/thatveganteacher.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "Gordon Ramsay. He hasn't changed a bit. A bunch of you guys tagged me and said, Ms. Katie, go and see him over on tick.go see what he's doing with the eggs. Go read the comment section and see how people are turning on him, see how disappointed they are in his comment section. It's horrible. Even the people who actually like him are saying, what a terrible cook. He's making these eggs there."
+      "ref_text": "Gordon Ramsay. He hasn't changed a bit. A bunch of you guys tagged me and said, Miss Katie, go and see him over on tick.go see what he's doing with the eggs. Go read the comments section and see how..."
     },
     {
       "slug": "tifa",
@@ -556,7 +556,7 @@
       "audio": "assets/personalities/tifa.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "They were both in pretty bad shape. And push! I think I hear him up ahead! Barrett! Corneo's room, right? That's a vending machine, all right? I think they'll call for us when it's time. You can do better than that. Much better. Gotta learn from this for next time. No surprises there! Would kill for a shower. Worked up a good sweat. That's..."
+      "ref_text": "They were both in pretty bad shape. And push! I think I hear him up ahead! Barrett! Corneo's room, right? That's a vending machine, all right? I think they'll call f-"
     },
     {
       "slug": "tim",
@@ -565,7 +565,7 @@
       "audio": "assets/personalities/tim.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "Good morning, and thank you for joining us. I really love the incredible energy in that opening. It represents the way we feel about California. California has always been a place for people with big ambitions and big dreams. A place where people are fueled with optimism to make things better, to make things that-"
+      "ref_text": "Good morning, and thank you for joining us. I really love the incredible energy in that opening. It represents the way we feel about California."
     },
     {
       "slug": "tom",
@@ -574,7 +574,7 @@
       "audio": "assets/personalities/tom.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "One thing that people do not understand is that you can literally change the way that you think. You can rewire your brain and develop a mindset that can lead you to achieving whatever it is that you set your mind to and are willing to pay the price to actually achieve. But the question is how? If you wanna know how to develop a growth mindset and achieve your dreams, definite..."
+      "ref_text": "One thing that people do not understand is that you can literally change the way that you think. You can rewire your brain and develop a mindset that can lead you to achieving whatever it is."
     },
     {
       "slug": "tucker",
@@ -583,7 +583,7 @@
       "audio": "assets/personalities/tucker.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "Last summer, deep in the bowels of the transportation department in Washington, some nameless federal analysts came across a highly puzzling trend in a pile of stats on traffic deaths. It turned out that in the year 2020, the number of American motorists who died on the road spiked dramatically. Traffic deaths rose by..."
+      "ref_text": "Last summer, deep in the bowels of the transportation department in Washington, some nameless federal analysts came across a highly puzzling trend in a pile of stats on"
     },
     {
       "slug": "uncle",
@@ -592,7 +592,7 @@
       "audio": "assets/personalities/uncle.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "What's she doing? What's she doing? Drained her, oh my God. You're killing me woman. Hi, I drained her. Draining rice with Colin, the hi. Hello, my name is Uncle Roger. Today, I will react to a video sent to me by a fan. It's the BBC, Good Food, how to make egg fried rice."
+      "ref_text": "What's she doing? What's she doing? Drained her, oh my God! You're killing me, woman! Hiya, Drained, they're... Draining rice with colons!"
     },
     {
       "slug": "buffett",
@@ -601,7 +601,7 @@
       "audio": "assets/personalities/buffett.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "The lessons are that people will continue to make the same mistakes they've made. I mean, humans, and it doesn't correlate to IQ, particularly, when they get greedy, and we had this huge bubble and the most important asset the American public has housing. I mean, you had a huge bubble and something you could borrow."
+      "ref_text": "The lessons are that people will continue to make the same mistakes they've made. I mean, humans, and it doesn't correlate to IQ particularly, when they get..."
     },
     {
       "slug": "zac-efron",
@@ -610,7 +610,7 @@
       "audio": "assets/personalities/zac-efron.mp3",
       "language": "English",
       "instruct": "",
-      "ref_text": "Well, my, I mean, an apartment like upstairs in the valley and like there was a camera guy of paparazzi and he just started taking pictures of me. But fame in and of itself, I never felt deserving of fame. I felt performances deserve recognition when they're good and they couldn't be ripped apart when they're bad."
+      "ref_text": "Well, my, I mean, an apartment, like upstairs in the valley and like there was a camera guy, a paparazzi, and he just started taking pictures of me."
     }
   ]
 }
