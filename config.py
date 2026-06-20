@@ -103,5 +103,21 @@ STT_MODEL = os.environ.get("STT_MODEL", "base.en")
 STT_COMPUTE = os.environ.get("STT_COMPUTE", "float16")  # float16|int8_float16|int8 ...
 # Silence (ms) that marks the end of an utterance before transcription fires.
 VAD_SILENCE_MS = int(os.environ.get("VAD_SILENCE_MS", "600"))
+
+# --- Streaming STT (speak-while-generating) --------------------------------
+# When the pipeline runs with streaming=True, the transcriber re-decodes the
+# in-progress utterance on a timer and commits stable words (LocalAgreement-2),
+# flushing whole phrases to the TTS as you keep talking — so Qwen3-TTS starts
+# speaking phrase 1 while you're still on phrase 2. Phrase-level, not word-level
+# (TTS needs a full phrase for prosody). Best with virtual-mic output + full
+# duplex (half_duplex=False) so the bot can talk over you without being heard.
+# Re-decode the growing utterance buffer every this many ms.
+STREAM_INTERVAL_MS = int(os.environ.get("STREAM_INTERVAL_MS", "500"))
+# Don't decode until the buffer holds at least this much audio (avoids Whisper
+# hallucinating on tiny clips).
+STREAM_MIN_DECODE_MS = int(os.environ.get("STREAM_MIN_DECODE_MS", "400"))
+# Flush committed words as a phrase at punctuation, or once this many committed-
+# but-unspoken words pile up without one. Lower = snappier but choppier prosody.
+STREAM_MAX_WORDS = int(os.environ.get("STREAM_MAX_WORDS", "8"))
 # Mic device: None -> auto (prefer PulseAudio). Override e.g. AUDIO_INPUT_DEVICE=7
 MIC_DEVICE = os.environ.get("AUDIO_INPUT_DEVICE")

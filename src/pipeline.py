@@ -197,6 +197,186 @@ class Transcriber(threading.Thread):
                 pass  # speaker is busy; drop rather than build a backlog
 
 
+def _norm_word(w: str) -> str:
+    """Lowercase, strip surrounding punctuation — for comparing two hypotheses."""
+    return w.lower().strip(".,!?;:\"'`()[]…-")
+
+
+def _common_prefix(prev: list[str], cur: list[str]) -> list[str]:
+    """Words both hypotheses agree on, left to right (LocalAgreement-2).
+
+    Compares normalized forms but returns the tokens from `cur` (the newer, more
+    contextually-informed decode), so casing/punctuation reflect the latest read.
+    """
+    n = 0
+    for a, b in zip(prev, cur):
+        if _norm_word(a) != _norm_word(b):
+            break
+        n += 1
+    return list(cur[:n])
+
+
+class StreamingTranscriber(threading.Thread):
+    """Speak-while-talking STT: re-decode the in-progress utterance and flush
+    stable phrases to text_q before the user finishes, so Qwen3-TTS starts
+    synthesizing phrase 1 while they're still on phrase 2.
+
+    Same VAD onset detection as `Transcriber`, but instead of waiting for the
+    end-of-utterance silence it re-runs Whisper on the growing buffer every
+    `STREAM_INTERVAL_MS`, commits words that two consecutive decodes agree on
+    (LocalAgreement-2), and emits a phrase once the committed text hits a clause
+    boundary (punctuation) or `STREAM_MAX_WORDS`. Committed words are never
+    retracted — once spoken, they can't be un-said.
+
+    Half-duplex note: while the Speaker is talking the mic is muted (same as
+    `Transcriber`), so true talk-over needs full duplex (half_duplex=False) and
+    virtual-mic output, or the bot transcribes itself.
+    """
+
+    def __init__(self, audio_q, text_q, speaking_evt, stop_evt, events_q=None,
+                 half_duplex=True, passthrough_evt=None):
+        super().__init__(name="StreamingTranscriber", daemon=True)
+        self.audio_q = audio_q
+        self.text_q = text_q
+        self.speaking_evt = speaking_evt
+        self.stop_evt = stop_evt
+        self.events_q = events_q
+        self.half_duplex = half_duplex
+        self.passthrough_evt = passthrough_evt
+        # Per-utterance commit state (reset by _reset between utterances).
+        self.prev_hyp: list[str] = []   # previous decode, for LocalAgreement
+        self.committed: list[str] = []  # words agreed + locked in this utterance
+        self.flushed = 0                # how many committed words already sent
+
+    def run(self):
+        import torch
+        from faster_whisper import WhisperModel
+        from silero_vad import VADIterator, load_silero_vad
+
+        device, index = _parse_cuda(config.DEVICE)
+        _emit(self.events_q, "info",
+              text=f"loading streaming STT '{config.STT_MODEL}' ({config.STT_COMPUTE})…")
+        try:
+            asr = WhisperModel(
+                config.STT_MODEL, device=device, device_index=index,
+                compute_type=config.STT_COMPUTE,
+            )
+            vad = VADIterator(
+                load_silero_vad(), sampling_rate=MIC_RATE,
+                min_silence_duration_ms=config.VAD_SILENCE_MS,
+            )
+        except Exception as exc:
+            _emit(self.events_q, "error", text=f"STT load failed: {exc}")
+            return
+        _emit(self.events_q, "info", text="streaming STT ready")
+        _emit(self.events_q, "status", value="listening")
+
+        # Timer/threshold geometry in frames (one VAD frame = 32 ms @ 16 kHz).
+        decode_every = max(1, round(config.STREAM_INTERVAL_MS / 32))
+        min_decode = int(config.STREAM_MIN_DECODE_MS / 1000 * MIC_RATE)
+
+        preroll = collections.deque(maxlen=PREROLL_FRAMES)
+        collecting = False
+        buf: list[np.ndarray] = []
+        since_decode = 0
+
+        while not self.stop_evt.is_set():
+            try:
+                frame = self.audio_q.get(timeout=0.1)
+            except queue.Empty:
+                continue
+
+            # Same mute policy as Transcriber: don't transcribe the bot's own
+            # output (half-duplex) or the user's raw voice (passthrough). A mute
+            # mid-utterance drops the unstable tail — committed words already went.
+            muted = (self.half_duplex and self.speaking_evt.is_set()) or \
+                    (self.passthrough_evt is not None and self.passthrough_evt.is_set())
+            if muted:
+                if collecting or preroll:
+                    vad.reset_states()
+                    collecting, buf, since_decode = False, [], 0
+                    preroll.clear()
+                    self._reset()
+                continue
+
+            preroll.append(frame)
+            event = vad(torch.from_numpy(frame.astype("float32")))
+
+            if event and "start" in event and not collecting:
+                collecting = True
+                buf = list(preroll)
+                since_decode = 0
+            elif collecting:
+                buf.append(frame)
+                since_decode += 1
+                if event and "end" in event:
+                    # Final decode: commit and flush everything still pending.
+                    self._decode(asr, buf, final=True)
+                    collecting, buf, since_decode = False, [], 0
+                    self._reset()
+                elif since_decode >= decode_every and \
+                        sum(len(f) for f in buf) >= min_decode:
+                    self._decode(asr, buf, final=False)
+                    since_decode = 0
+
+    def _decode(self, asr, buf: list[np.ndarray], final: bool):
+        """Transcribe the current buffer, advance committed words, flush phrases."""
+        audio = np.concatenate(buf).astype("float32")
+        try:
+            segments, _ = asr.transcribe(
+                audio, language="en", beam_size=1, condition_on_previous_text=False,
+            )
+            words = " ".join(s.text.strip() for s in segments).strip().split()
+        except Exception as exc:  # a bad partial shouldn't kill the loop
+            _emit(self.events_q, "error", text=f"streaming decode failed: {exc}")
+            return
+
+        if final:
+            # Trust the full-utterance read; never shrink below what we committed.
+            if len(words) > len(self.committed):
+                self.committed = words
+        else:
+            agreed = _common_prefix(self.prev_hyp, words)
+            self.prev_hyp = words
+            if len(agreed) > len(self.committed):
+                self.committed = agreed
+        self._flush(final)
+
+    def _flush(self, final: bool):
+        """Emit committed-but-unspoken words as a phrase when ready."""
+        pending = self.committed[self.flushed:]
+        if not pending:
+            return
+
+        if final:
+            chunk = pending
+        else:
+            # Prefer a clause boundary; else flush once enough words pile up.
+            boundary = -1
+            for i, w in enumerate(pending):
+                if w[-1:] in ".,!?;:":
+                    boundary = i
+            if boundary >= 0:
+                chunk = pending[:boundary + 1]
+            elif len(pending) >= config.STREAM_MAX_WORDS:
+                chunk = pending
+            else:
+                return
+
+        text = " ".join(chunk).strip()
+        self.flushed += len(chunk)
+        if text:
+            _emit(self.events_q, "user", text=text)
+            try:
+                self.text_q.put_nowait(text)
+            except queue.Full:
+                pass  # speaker is busy; drop rather than build a backlog
+
+    def _reset(self):
+        """Clear per-utterance commit state for the next utterance."""
+        self.prev_hyp, self.committed, self.flushed = [], [], 0
+
+
 class Speaker(threading.Thread):
     """Speak each text from text_q in the cloned voice, gating the mic meanwhile."""
 
@@ -410,7 +590,7 @@ class Pipeline:
     def __init__(self, input_device=None, output_device=None, instruct=None,
                  events_q=None, half_duplex=True, ref_audio=None, ref_text=None,
                  language=None, expressive=False, icl=False, passthrough=False,
-                 monitor_device=None, monitor=False):
+                 monitor_device=None, monitor=False, streaming=False):
         self.input_device = input_device
         self.output_device = output_device
         self.monitor_device = monitor_device
@@ -422,6 +602,7 @@ class Pipeline:
         self.language = language
         self.expressive = expressive
         self.icl = icl
+        self.streaming = streaming  # speak-while-talking: commit phrases mid-utterance
         self.audio_q = queue.Queue(maxsize=200)   # ~6 s @ 32 ms frames
         self.text_q = queue.Queue(maxsize=4)
         self.passthrough_q = queue.Queue(maxsize=200)  # raw mic frames for "my voice"
@@ -490,9 +671,10 @@ class Pipeline:
                           self.half_duplex, self.ref_audio, self.ref_text,
                           self.language, self.expressive, self.icl,
                           self.monitor_device, self.monitor_evt)
-        transcriber = Transcriber(self.audio_q, self.text_q, self.speaking,
-                                  self.stop_evt, self.events_q, self.half_duplex,
-                                  self.passthrough_evt)
+        tx_cls = StreamingTranscriber if self.streaming else Transcriber
+        transcriber = tx_cls(self.audio_q, self.text_q, self.speaking,
+                             self.stop_evt, self.events_q, self.half_duplex,
+                             self.passthrough_evt)
         mic = MicSource(self.audio_q, self.stop_evt, self.input_device, self.events_q,
                         self.passthrough_q, self.passthrough_evt)
         passthrough = Passthrough(self.passthrough_q, self.passthrough_evt,
